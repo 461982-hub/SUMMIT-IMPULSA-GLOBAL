@@ -28,8 +28,9 @@ import {
   validarAprobacionGerenciaGeneral 
 } from '../utils/workflowUtils';
 import { formatearMoneda } from '../utils/calculations';
-import { formatearHNL } from '../utils/poa2027Data';
+import { formatearHNL } from '../utils/poa2026Data';
 import { emitirAprobacionFinalGerenciaGeneral } from '../utils/poaMonthlyTrackingUtils';
+import { crearNotificacionAprobacionGGAComercializacion } from '../utils/notificationUtils';
 import { SummitLogo } from './SummitLogo';
 
 interface WorkflowStatusModalProps {
@@ -115,11 +116,30 @@ export const WorkflowStatusModal: React.FC<WorkflowStatusModalProps> = ({
       autorizacionAcademica: true,
       fechaAutorizacionAcademica: ahora,
       responsableAcademico: 'MSc. Elena Rostrán - Gerencia Académica',
-      etapaFlujo: 'comercializacion',
+      etapaFlujo: 'revision_gerencia_general',
       seLlevoACabo: proyectoActivo.seLlevoACabo === 'Planificado' ? 'Planificado' : proyectoActivo.seLlevoACabo,
     };
     onGuardarProyecto(proyectoActualizado);
-    setMensajeExito(`¡Fase Académica autorizada para "${proyectoActivo.nombreProyecto}"! Se remitió a Gerencia de Comercialización.`);
+    setMensajeExito(`¡Sílabo Oficial autorizado por Gerencia Académica! Remitido formalmente a Gerencia General para su revisión y dictamen de aprobación.`);
+    setTimeout(() => setMensajeExito(null), 4000);
+  };
+
+  const handleAprobarRevisionGGParaComercializacion = (observaciones?: string) => {
+    if (!proyectoActivo) return;
+    const ahora = new Date().toISOString();
+    const { notificacion, aviso } = crearNotificacionAprobacionGGAComercializacion(proyectoActivo, observaciones);
+    const avisosPrevios = proyectoActivo.avisosProyecto || [];
+    const proyectoActualizado: ProyectoEducativo = {
+      ...proyectoActivo,
+      aprobadoGerenciaGeneral: true,
+      fechaAprobacionGerenciaGeneral: ahora,
+      aprobadoPorGerenciaGeneralNombre: 'Dr. Walter Pedroza - Gerencia General',
+      etapaFlujo: 'comercializacion',
+      observacionesGerenciaGeneral: observaciones || 'Aprobado formalmente por Gerencia General. Habilitado para Comercialización.',
+      avisosProyecto: [aviso, ...avisosPrevios],
+    };
+    onGuardarProyecto(proyectoActualizado);
+    setMensajeExito(`¡Sílabo Aprobado por Gerencia General! Remitido formalmente a Gerencia de Comercialización para inicio de ventas. Notificaciones por correo emitidas.`);
     setTimeout(() => setMensajeExito(null), 4000);
   };
 
@@ -387,7 +407,7 @@ export const WorkflowStatusModal: React.FC<WorkflowStatusModalProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 pt-2">
-                    {/* Nivel 1 */}
+                    {/* Nivel 1: Gerencia Académica */}
                     <div className={`p-3 rounded-xl border transition-all ${
                       nivelInfo?.nivel === 1 
                         ? 'bg-blue-50/80 border-blue-400 ring-2 ring-blue-500/20 shadow-xs' 
@@ -403,72 +423,41 @@ export const WorkflowStatusModal: React.FC<WorkflowStatusModalProps> = ({
                           <Clock className="w-4 h-4 text-amber-500" />
                         )}
                       </div>
-                      <h4 className="text-xs font-bold text-slate-900 mt-1">Gerencia Académica</h4>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Diseño curricular, docente, horas y costos operativos directos.</p>
+                      <h4 className="text-xs font-bold text-slate-900 mt-1">1. Gerencia Académica</h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Formulación de Sílabo Oficial con correlativos automáticos Empresa &amp; SAR.</p>
                       <div className="mt-2 text-[10px] font-semibold text-slate-700">
                         {diagAcad?.autorizado ? (
-                          <span className="text-emerald-700 font-bold">✅ Autorizado</span>
+                          <span className="text-emerald-700 font-bold">✅ Sílabo Grabado</span>
                         ) : (
                           <span className="text-amber-700 font-bold">⏳ En diseño</span>
                         )}
                       </div>
                     </div>
 
-                    {/* Nivel 2 */}
+                    {/* Nivel 2: Revisión Gerencia General */}
                     <div className={`p-3 rounded-xl border transition-all ${
                       nivelInfo?.nivel === 2 
-                        ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-500/20 shadow-xs' 
-                        : diagCom?.autorizado 
-                        ? 'bg-emerald-50/50 border-emerald-300' 
-                        : 'bg-slate-50 border-slate-200'
-                    }`}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-emerald-900 uppercase">Nivel 2</span>
-                        {diagCom?.autorizado ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        ) : nivelInfo?.nivel === 2 ? (
-                          <Clock className="w-4 h-4 text-amber-500" />
-                        ) : (
-                          <span className="text-[10px] text-slate-400">Pendiente</span>
-                        )}
-                      </div>
-                      <h4 className="text-xs font-bold text-slate-900 mt-1">Comercialización</h4>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Canales, matrícula mínima (≥4), embudo y precios.</p>
-                      <div className="mt-2 text-[10px] font-semibold text-slate-700">
-                        {diagCom?.autorizado ? (
-                          <span className="text-emerald-700 font-bold">✅ Comercializado</span>
-                        ) : nivelInfo?.nivel === 2 ? (
-                          <span className="text-amber-700 font-bold">⏳ Captando alumnos</span>
-                        ) : (
-                          <span className="text-slate-400">Por iniciar</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Nivel 3 */}
-                    <div className={`p-3 rounded-xl border transition-all ${
-                      nivelInfo?.nivel === 3 
                         ? 'bg-purple-50/80 border-purple-400 ring-2 ring-purple-500/20 shadow-xs' 
-                        : proyectoActivo.aprobacionFinalGerenciaGeneral 
+                        : (proyectoActivo.aprobadoGerenciaGeneral || nivelInfo?.nivel > 2)
                         ? 'bg-emerald-50/50 border-emerald-300' 
                         : 'bg-slate-50 border-slate-200'
                     }`}>
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-purple-900 uppercase">Nivel 3</span>
-                        {proyectoActivo.aprobacionFinalGerenciaGeneral ? (
+                        <span className="text-[10px] font-bold text-purple-900 uppercase">Nivel 2</span>
+                        {(proyectoActivo.aprobadoGerenciaGeneral || nivelInfo?.nivel > 2) ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        ) : nivelInfo?.nivel === 3 ? (
+                        ) : nivelInfo?.nivel === 2 ? (
                           <Clock className="w-4 h-4 text-purple-600 animate-pulse" />
                         ) : (
                           <span className="text-[10px] text-slate-400">Pendiente</span>
                         )}
                       </div>
-                      <h4 className="text-xs font-bold text-slate-900 mt-1">Gerencia General</h4>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Auditoría integral de cumplimiento de procesos por gerencia.</p>
+                      <h4 className="text-xs font-bold text-slate-900 mt-1">2. Revisión GG</h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Revisión ejecutiva y dictamen de aprobación para pase a Comercialización.</p>
                       <div className="mt-2 text-[10px] font-semibold text-slate-700">
-                        {proyectoActivo.aprobacionFinalGerenciaGeneral ? (
-                          <span className="text-emerald-700 font-bold">✅ Dictaminado</span>
-                        ) : nivelInfo?.nivel === 3 ? (
+                        {(proyectoActivo.aprobadoGerenciaGeneral || nivelInfo?.nivel > 2) ? (
+                          <span className="text-emerald-700 font-bold">✅ Aprobado por GG</span>
+                        ) : nivelInfo?.nivel === 2 ? (
                           <span className="text-purple-700 font-bold">⚖️ En revisión</span>
                         ) : (
                           <span className="text-slate-400">En espera</span>
@@ -476,7 +465,38 @@ export const WorkflowStatusModal: React.FC<WorkflowStatusModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Nivel 4 */}
+                    {/* Nivel 3: Comercialización */}
+                    <div className={`p-3 rounded-xl border transition-all ${
+                      nivelInfo?.nivel === 3 
+                        ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-500/20 shadow-xs' 
+                        : diagCom?.autorizado 
+                        ? 'bg-emerald-50/50 border-emerald-300' 
+                        : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-emerald-900 uppercase">Nivel 3</span>
+                        {diagCom?.autorizado ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        ) : nivelInfo?.nivel === 3 ? (
+                          <Clock className="w-4 h-4 text-amber-500" />
+                        ) : (
+                          <span className="text-[10px] text-slate-400">Pendiente</span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-900 mt-1">3. Comercialización</h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Canales, matrícula mínima (≥4), pauta publicitaria y precios.</p>
+                      <div className="mt-2 text-[10px] font-semibold text-slate-700">
+                        {diagCom?.autorizado ? (
+                          <span className="text-emerald-700 font-bold">✅ Comercializado</span>
+                        ) : nivelInfo?.nivel === 3 ? (
+                          <span className="text-amber-700 font-bold">⏳ Captando alumnos</span>
+                        ) : (
+                          <span className="text-slate-400">Por iniciar</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Nivel 4: Aprobado Listo & POA */}
                     <div className={`p-3 rounded-xl border transition-all ${
                       nivelInfo?.nivel === 4 
                         ? 'bg-indigo-50/90 border-indigo-400 ring-2 ring-indigo-500/20 shadow-xs' 
@@ -490,8 +510,8 @@ export const WorkflowStatusModal: React.FC<WorkflowStatusModalProps> = ({
                           <span className="text-[10px] text-slate-400">Falta Dictamen</span>
                         )}
                       </div>
-                      <h4 className="text-xs font-bold text-slate-900 mt-1">Aprobado Listo</h4>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Autorizado para ejecución. Rebaja facturación de meta POA.</p>
+                      <h4 className="text-xs font-bold text-slate-900 mt-1">4. Aprobado Listo</h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Autorizado para ejecución final. Rebaja facturación de meta POA.</p>
                       <div className="mt-2 text-[10px] font-semibold text-slate-700">
                         {nivelInfo?.nivel === 4 ? (
                           <span className="text-indigo-800 font-bold">🚀 En Ejecución</span>
@@ -684,7 +704,20 @@ export const WorkflowStatusModal: React.FC<WorkflowStatusModalProps> = ({
                       Estado Actual del Proyecto: <strong className="text-slate-800">{proyectoActivo.seLlevoACabo}</strong>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Botón de Aprobación de Sílabo en Fase de Revisión GG para pase a Comercialización */}
+                      {(!proyectoActivo.aprobadoGerenciaGeneral && (proyectoActivo.etapaFlujo === 'revision_gerencia_general' || nivelInfo?.nivel === 2)) && (
+                        <button
+                          type="button"
+                          onClick={() => handleAprobarRevisionGGParaComercializacion()}
+                          className="px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 bg-gradient-to-r from-purple-700 to-indigo-800 hover:from-purple-800 hover:to-indigo-900 text-white shadow-md transition-all cursor-pointer hover:scale-[1.02]"
+                          title="Aprobar el sílabo oficial y remitirlo formalmente a Comercialización"
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                          <span>Aprobar Sílabo y Remitir a Comercialización →</span>
+                        </button>
+                      )}
+
                       {proyectoActivo.aprobacionFinalGerenciaGeneral ? (
                         <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-900 border border-emerald-300 px-4 py-2 rounded-xl text-xs font-black">
                           <CheckCircle2 className="w-4 h-4 text-emerald-700" />
@@ -700,10 +733,10 @@ export const WorkflowStatusModal: React.FC<WorkflowStatusModalProps> = ({
                               ? 'bg-purple-700 hover:bg-purple-800 text-white hover:scale-[1.02]'
                               : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
                           }`}
-                          title={validacionGG?.puedeAprobar ? 'Emitir dictamen aprobatorio' : 'Bloqueado hasta que ambas gerencias completen sus procesos'}
+                          title={validacionGG?.puedeAprobar ? 'Emitir dictamen aprobatorio final' : 'Bloqueado hasta que ambas gerencias completen sus procesos'}
                         >
                           <ShieldCheck className="w-4 h-4" />
-                          <span>Aprobar Proyecto & Rebajar de Meta POA</span>
+                          <span>Dictamen Final & Rebajar de Meta POA</span>
                         </button>
                       )}
                     </div>
@@ -724,7 +757,7 @@ export const WorkflowStatusModal: React.FC<WorkflowStatusModalProps> = ({
           <div className="flex items-center gap-2 text-[11px]">
             <Info className="w-3.5 h-3.5 text-indigo-600" />
             <span>
-              Flujo oficial: <strong>1. Académica</strong> (Diseño) ➔ <strong>2. Comercialización</strong> (Venta) ➔ <strong>3. Gerencia General</strong> (Aprobación & POA).
+              Flujo oficial: <strong>1. Académica</strong> (Sílabo &amp; Correlativos) ➔ <strong>2. Gerencia General</strong> (Revisión &amp; Aprobación) ➔ <strong>3. Comercialización</strong> (Venta) ➔ <strong>4. Aprobado Listo</strong> (POA).
             </span>
           </div>
 

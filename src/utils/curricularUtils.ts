@@ -370,6 +370,15 @@ export function obtenerConfiguracionHorasPorNivel(nivel?: NivelProyecto): {
   totalHoras: number;
   descripcion?: string;
 } {
+  // Regla institucional inmutable: todo curso básico consta de 12 horas (4 temas × 3 horas/tema)
+  if (nivel === 'Básico' || !nivel) {
+    return {
+      cantidadTemas: 4,
+      horasPorTema: 3,
+      totalHoras: 12,
+      descripcion: 'Norma institucional básica obligatoria (4 temas × 3 hrs/tema = 12 horas clase)',
+    };
+  }
   const todas = obtenerTodasConfiguracionesHorasNivel();
   const config = (nivel && todas[nivel]) ? todas[nivel] : todas['Básico'];
   return {

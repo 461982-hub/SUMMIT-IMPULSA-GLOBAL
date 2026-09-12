@@ -6,7 +6,7 @@
  * Premisa: Modelo Bootstrapping con Cero Capital Inicial (L. 0.00)
  */
 
-export interface POA2027ResumenEjecutivo {
+export interface POA2026ResumenEjecutivo {
   empresa: string;
   poaTitulo: string;
   periodoVigencia: string;
@@ -99,7 +99,7 @@ export interface POAModuloEstrategico {
 }
 
 export const POA_2026_DATOS: {
-  resumen: POA2027ResumenEjecutivo;
+  resumen: POA2026ResumenEjecutivo;
   presupuestosGerencias: POAPresupuestoGerencia[];
   flujoMensual: POAFlujoMensual[];
   flujoTrimestral: POAFlujoTrimestral[];
@@ -149,7 +149,7 @@ export const POA_2026_DATOS: {
     {
       gerencia: 'Gerencia Académica',
       eje: 'Pilar Central Formativo & LMS',
-      lider: 'Dr. Donal Reyes',
+      lider: 'Phd. Donal Reyes',
       correo: 'academia.summitg@gmail.com',
       sep: 57400,
       oct: 61200,
@@ -322,7 +322,7 @@ export const POA_2026_DATOS: {
       realProy: '94.0%',
       cumplimientoPorcentaje: 102.2,
       semaforo: '🟢 Excelente',
-      responsable: 'Dr. Donal Reyes',
+      responsable: 'Phd. Donal Reyes',
     },
     {
       id: 'kpi-05',
@@ -336,7 +336,7 @@ export const POA_2026_DATOS: {
       realProy: '100.0%',
       cumplimientoPorcentaje: 100.0,
       semaforo: '🟢 Cumplido',
-      responsable: 'Dr. Donal Reyes',
+      responsable: 'Phd. Donal Reyes',
     },
     {
       id: 'kpi-06',
@@ -350,7 +350,7 @@ export const POA_2026_DATOS: {
       realProy: '92.0%',
       cumplimientoPorcentaje: 108.2,
       semaforo: '🟢 Excelente',
-      responsable: 'Dr. Donal Reyes',
+      responsable: 'Phd. Donal Reyes',
     },
     {
       id: 'kpi-07',
@@ -493,14 +493,14 @@ export const POA_2026_DATOS: {
       desviacionRatio: '16 Semanas en Positivo',
       semaforo: '🟢 100% Solvente sin Deuda',
       impactoEjecutivo: 'Cobro anticipado de matrículas previo al desembolso de nómina docente y fijos.',
-      responsable: 'Dr. Donal Reyes',
+      responsable: 'Phd. Donal Reyes',
       enlaceRapido: 'Ver Catálogo & Flujo',
     },
   ],
 };
 
-// Exportación de alias idéntico para retrocompatibilidad total en toda la aplicación
-export const POA_2027_DATOS = POA_2026_DATOS;
+// Exportación de alias maestro
+export const POA_2026_DATOS_MAESTRO = POA_2026_DATOS;
 
 export function formatearHNL(valor: number | undefined | null): string {
   if (valor === undefined || valor === null || isNaN(valor)) return 'L. 0.00';

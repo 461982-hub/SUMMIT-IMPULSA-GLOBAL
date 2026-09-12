@@ -7,7 +7,7 @@ import {
   AlertaCierreMensual,
   ChecklistCierreMensual 
 } from '../types';
-import { POA_2027_DATOS, formatearHNL } from './poa2027Data';
+import { POA_2026_DATOS, formatearHNL } from './poa2026Data';
 import { obtenerClaveMesProyecto, formatearEtiquetaMes } from './monthUtils';
 
 export const STORAGE_KEY_CIERRES_MENSUALES = 'summit_cierres_mensuales_poa_v1';
@@ -16,7 +16,7 @@ export const META_MENSUAL_PROYECTOS_POA = 18.5; // 74 grupos cuatrimestrales (pr
 export const BREAK_EVEN_PROYECTOS_POA = 17.3;   // 69.0 grupos en el cuatrimestre para 100% gastos cubiertos
 export const MARGEN_POA_META_PCT = 2.6;         // Margen operativo establecido en POA SEP - DIC 2026
 
-const TASA_CAMBIO_REFERENCIAL = POA_2027_DATOS.resumen.tipoCambio; // 27.00 HNL/USD
+const TASA_CAMBIO_REFERENCIAL = POA_2026_DATOS.resumen.tipoCambio; // 27.00 HNL/USD
 
 /**
  * Convierte un monto a HNL (Lempiras)

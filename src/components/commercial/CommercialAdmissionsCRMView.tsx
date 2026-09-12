@@ -23,18 +23,21 @@ import {
   AlertCircle,
   ExternalLink,
   Users,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface CommercialAdmissionsCRMViewProps {
   proyectos: ProyectoEducativo[];
   moneda: Moneda;
   onGuardarProyecto: (proyectoActualizado: ProyectoEducativo) => void;
+  onAutorizarComercial?: (proyecto: ProyectoEducativo) => void;
 }
 
 export const CommercialAdmissionsCRMView: React.FC<CommercialAdmissionsCRMViewProps> = ({
   proyectos,
   moneda,
   onGuardarProyecto,
+  onAutorizarComercial,
 }) => {
   const [proyectoSeleccionadoId, setProyectoSeleccionadoId] = useState<string>(
     proyectos.length > 0 ? proyectos[0].id : ''
@@ -317,6 +320,46 @@ export const CommercialAdmissionsCRMView: React.FC<CommercialAdmissionsCRMViewPr
           })}
         </div>
       </div>
+
+      {/* Banner de Autorización Comercial para Gerencia General (Paso 2 -> Paso 3) */}
+      {proyectoActual && (
+        <div className="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-900 border border-emerald-700/80 rounded-xl p-4 text-white flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
+                Paso 2 de 3: Comercialización & Matrícula
+              </span>
+              <span className="text-xs text-white font-bold">
+                {proyectoActual.nombreProyecto}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300">
+              {proyectoActual.autorizacionComercial 
+                ? '✓ Proceso comercial completado y autorizado. Remitido a Gerencia General para su revisión y rebaja formal del POA 2026.'
+                : 'Al finalizar la captación, promoción y matrícula de estudiantes, pulse "Autorizar y Enviar a Gerencia General" para continuar el flujo institucional.'}
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            {proyectoActual.autorizacionComercial ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-xl text-xs font-bold whitespace-nowrap">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Autorizado para Gerencia General</span>
+              </span>
+            ) : onAutorizarComercial ? (
+              <button
+                type="button"
+                onClick={() => onAutorizarComercial(proyectoActual)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-400 to-teal-300 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer hover:scale-105 whitespace-nowrap"
+                title="Autorizar venta y matrícula y pasar a Gerencia General"
+              >
+                <ShieldCheck className="w-4 h-4 text-slate-950" />
+                <span>Autorizar y Enviar a Gerencia General</span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* Grid: Formulario Nuevo Lead + Tabla / Pipeline del CRM */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

@@ -104,7 +104,6 @@ export const AcademicWorkloadDistributionView: React.FC<AcademicWorkloadDistribu
   const [nuevoDocentePropuesto, setNuevoDocentePropuesto] = useState<string>('');
   const [nuevoModalidad, setNuevoModalidad] = useState<string>('Virtual Sincrónica');
   const [nuevoHorarioTexto, setNuevoHorarioTexto] = useState<string>('Martes y Jueves (18:00 - 20:00)');
-  const [nuevoProyectoCreado, setNuevoProyectoCreado] = useState<boolean>(false);
 
   // Lista de docentes únicos
   const listaDocentes = useMemo(() => {
@@ -382,55 +381,6 @@ export const AcademicWorkloadDistributionView: React.FC<AcademicWorkloadDistribu
     });
   }, [proyectos]);
 
-  // Aplicar Proyecto Simulado al Catálogo Real
-  const handleAplicarNuevoProyecto = () => {
-    if (!nuevoNombre.trim()) return;
-
-    if (onGuardarProyecto) {
-      const nuevoId = String(Math.floor(1000 + Math.random() * 9000));
-      const nuevoObj = calcularMetricasProyecto({
-        id: nuevoId,
-        nombreProyecto: nuevoNombre.trim(),
-        tipoProyecto: nuevoTipo as any,
-        nivel: 'Intermedio',
-        codigoPrograma: `ACAD-2026-0${nuevoId}`,
-        nombreDocente: nuevoDocentePropuesto || 'Docente Titular',
-        docenteEspecialidad: 'Especialista en Cátedra',
-        horasClase: nuevoHorasTotales,
-        tarifaHoraDocente: 200,
-        costoZoom: 350,
-        costoPapeleria: 0,
-        gastosVarios: 150,
-        margenGananciaOperativa: 35,
-        horasTeoricas: Math.round(nuevoHorasTotales * 0.4),
-        horasPracticas: Math.round(nuevoHorasTotales * 0.6),
-        modalidad: nuevoModalidad,
-        horario: nuevoHorarioTexto,
-        diasClase: 'Martes y Jueves',
-        seccion: 'Sección A',
-        fechaProgramacion: '2026-09-01',
-        fechaVenta: '2026-08-25',
-        metodoVenta: 'Redes sociales',
-        seLlevoACabo: 'En curso',
-        observaciones: 'Asignado mediante Simulador de Distribución de Carga Académica.',
-        alumnosProyectados: 15,
-        alumnosFinal: 15,
-        objetivoGeneral: `Desarrollar competencias profesionales de alto impacto a través de ${nuevoHorasTotales} horas de formación especializada.`,
-        aforoYPrerrequisitos: {
-          aforoMaximo: 25,
-          aforoMinimoRequerido: 8,
-          estadoAforo: 'Cupos Disponibles',
-          nivelDificultad: 'Intermedio',
-          experienciaPreviaRequerida: 'Conocimientos básicos del área.',
-        },
-      });
-
-      onGuardarProyecto(nuevoObj);
-      setNuevoProyectoCreado(true);
-      setTimeout(() => setNuevoProyectoCreado(false), 4000);
-    }
-  };
-
   // Tooltip personalizado para Recharts
   const CustomTooltipSemanal = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -537,26 +487,8 @@ export const AcademicWorkloadDistributionView: React.FC<AcademicWorkloadDistribu
             <Zap className={`w-4 h-4 ${simularActivo ? 'fill-slate-950' : ''}`} />
             <span>{simularActivo ? 'Simulador de Asignación: ACTIVO' : 'Activar Simulador de Carga'}</span>
           </button>
-
-          {onNuevoProyecto && (
-            <button
-              type="button"
-              onClick={onNuevoProyecto}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all border border-blue-400/40"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Registrar Proyecto</span>
-            </button>
-          )}
         </div>
       </div>
-
-      {nuevoProyectoCreado && (
-        <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-xl text-xs font-bold text-emerald-900 flex items-center gap-2.5 animate-in fade-in shadow-xs">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span>¡Nuevo proyecto "{nuevoNombre}" asignado e insertado exitosamente en el catálogo de Gerencia Académica!</span>
-        </div>
-      )}
 
       {/* 2. Tarjetas de Resumen & KPIs de Capacidad Semanal */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
@@ -1087,14 +1019,9 @@ export const AcademicWorkloadDistributionView: React.FC<AcademicWorkloadDistribu
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleAplicarNuevoProyecto}
-              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 shrink-0"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Aplicar & Registrar Cátedra</span>
-            </button>
+            <span className="px-3 py-1.5 bg-indigo-900/80 border border-indigo-400/40 text-indigo-200 text-xs font-bold rounded-xl shadow-xs">
+              Simulación Analítica de Carga (Sin Grabación)
+            </span>
           </div>
         </div>
 

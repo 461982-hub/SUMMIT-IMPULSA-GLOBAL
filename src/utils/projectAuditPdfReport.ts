@@ -3,6 +3,11 @@ import autoTable from 'jspdf-autotable';
 import { ProyectoEducativo, Moneda, HistorialCambioProyecto } from '../types';
 import { formatearMoneda, calcularMetricasProyecto } from './calculations';
 import { subirReporteADrive } from '../services/googleDriveService';
+import { 
+  agregarEncabezadoOficialPDF, 
+  agregarPieDePaginaOficialPDF, 
+  SUMMIT_BRANDING 
+} from './brandingUtils';
 
 export type DictamenAuditoriaTipo = 
   | 'FAVORABLE' 
@@ -369,59 +374,26 @@ export async function exportarReporteAuditoriaProyectoPDF(
   };
 
   const dibujarEncabezadoPaginaSecundaria = () => {
-    doc.setFillColor(15, 23, 42);
-    doc.rect(margin, margin - 4, contentWidth, 8, 'F');
-    doc.setFillColor(37, 99, 235);
-    doc.rect(margin, margin + 4, contentWidth, 0.8, 'F');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text(`EXPEDIENTE ${codigoExpediente} • ${proyecto.nombreProyecto}`, margin + 3, margin + 1.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(203, 213, 225);
-    doc.text(`Auditoría Interna • Folio Confidencial`, pageWidth - margin - 3, margin + 1.5, { align: 'right' });
+    agregarEncabezadoOficialPDF(doc, {
+      gerencia: 'auditoria',
+      tituloDocumento: `AUDITORÍA • ${codigoExpediente}`,
+      subtituloDocumento: proyecto.nombreProyecto,
+      esPrimeraPagina: false,
+    });
   };
 
   // =========================================================================
-  // PÁGINA 1: ENCABEZADO INSTITUCIONAL DE AUDITORÍA
+  // PÁGINA 1: ENCABEZADO INSTITUCIONAL DE AUDITORÍA (OFICIAL ESTANDARIZADO)
   // =========================================================================
-  doc.setFillColor(15, 23, 42); // Navy / Slate 900
-  doc.rect(0, 0, pageWidth, 28, 'F');
-
-  // Franja decorativa dorada / azul
-  doc.setFillColor(37, 99, 235); // Blue 600
-  doc.rect(0, 28, pageWidth, 2.5, 'F');
-
-  // Títulos institucionales
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('SUMMIT IMPULSA GLOBAL', margin, 9.5);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.8);
-  doc.setTextColor(191, 219, 254);
-  doc.text('Summit Impulsa S. de R.L. • RTN: 05019026435770 • San Pedro Sula, Cortés, Honduras', margin, 14.5);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(255, 255, 255);
-  doc.text('INFORME DETALLADO DE AUDITORÍA, HISTORIAL DE CAMBIOS Y TRAZABILIDAD', margin, 21);
-
-  // Folio y Metadatos en el encabezado derecho
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(254, 240, 138); // Amarillo oro
-  doc.text(`EXPEDIENTE: ${codigoExpediente}`, pageWidth - margin, 11, { align: 'right' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(226, 232, 240);
-  doc.text(`Emisión: ${fechaHoyStr}`, pageWidth - margin, 17, { align: 'right' });
-  doc.text(`Moneda: ${moneda} (${simMoneda}) | SAR: ${proyecto.codigoFiscalSAR || 'REG-SAR-2026'}`, pageWidth - margin, 23, { align: 'right' });
-
-  y = 36;
+  y = agregarEncabezadoOficialPDF(doc, {
+    gerencia: 'auditoria',
+    tituloDocumento: 'INFORME DE AUDITORÍA, HISTORIAL DE CAMBIOS Y TRAZABILIDAD',
+    subtituloDocumento: proyecto.nombreProyecto,
+    codigoDocumento: codigoExpediente,
+    fechaEmision: fechaHoyStr,
+    moneda,
+    esPrimeraPagina: true,
+  });
 
   // =========================================================================
   // TARJETA DE IDENTIFICACIÓN Y DICTAMEN DEL PROYECTO
@@ -907,30 +879,12 @@ export async function exportarReporteAuditoriaProyectoPDF(
   doc.text('Aprobación Ejecutiva Definitiva', firma3X + firmaWidth / 2, lineaFirmaY + 7, { align: 'center' });
 
   // =========================================================================
-  // PIE DE PÁGINA Y NUMERACIÓN EN TODAS LAS PÁGINAS
+  // PIE DE PÁGINA Y NUMERACIÓN EN TODAS LAS PÁGINAS (OFICIAL ESTANDARIZADO)
   // =========================================================================
-  const totalPaginas = doc.getNumberOfPages();
-  for (let i = 1; i <= totalPaginas; i++) {
-    doc.setPage(i);
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.2);
-    doc.line(margin, pageHeight - 8, pageWidth - margin, pageHeight - 8);
-
-    doc.setFontSize(6.2);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(148, 163, 184);
-    doc.text(
-      `SUMMIT IMPULSA GLOBAL • Summit Impulsa S. de R.L. (RTN: 05019026435770, San Pedro Sula, Cortés) • Expediente ${codigoExpediente} • Fecha: ${fechaHoyStr}`,
-      margin,
-      pageHeight - 4.5
-    );
-    doc.text(
-      `Página ${i} de ${totalPaginas}`,
-      pageWidth - margin,
-      pageHeight - 4.5,
-      { align: 'right' }
-    );
-  }
+  agregarPieDePaginaOficialPDF(doc, {
+    codigo: codigoExpediente,
+    gerencia: 'Auditoría Interna & Control de Gestión',
+  });
 
   // Descarga del Archivo PDF en el navegador
   const nombreLimpio = proyecto.nombreProyecto

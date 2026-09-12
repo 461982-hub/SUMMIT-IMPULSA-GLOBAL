@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda, RegistroCierreMensual, ChecklistCierreMensual } from '../types';
 import { formatearMoneda } from '../utils/calculations';
-import { formatearHNL } from '../utils/poa2027Data';
+import { formatearHNL } from '../utils/poa2026Data';
 import { formatearEtiquetaMes } from '../utils/monthUtils';
 import { 
   calcularRegistroCierreMes, 
@@ -56,7 +56,7 @@ export const CierreMensualModal: React.FC<CierreMensualModalProps> = ({
   onActualizarProyectos,
   onNotificar,
 }) => {
-  // Lista de todos los meses presentes en los proyectos o meses clave 2026/2027
+  // Lista de todos los meses presentes en los proyectos o meses clave POA 2026 (Sep - Dic)
   const listaMeses = useMemo(() => {
     const mesesSet = new Set<string>();
     proyectos.forEach((p) => {

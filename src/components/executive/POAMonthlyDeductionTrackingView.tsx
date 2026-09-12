@@ -27,7 +27,7 @@ import {
   revocarAprobacionFinalGerenciaGeneral,
   META_ANUAL_FACTURACION_POA_HNL
 } from '../../utils/poaMonthlyTrackingUtils';
-import { formatearHNL } from '../../utils/poa2027Data';
+import { formatearHNL } from '../../utils/poa2026Data';
 import { formatearMoneda } from '../../utils/calculations';
 
 interface POAMonthlyDeductionTrackingViewProps {

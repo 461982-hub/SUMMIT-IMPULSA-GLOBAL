@@ -174,6 +174,7 @@ export interface DesgloseFiscalCompleto {
 
 export type EtapaFlujoProyecto = 
   | 'elaboracion_academica' 
+  | 'revision_gerencia_general' // Nuevo flujo: Sílabo guardado va a Gerencia General para revisión y aprobación
   | 'comercializacion' 
   | 'dictamen_general' 
   | 'aprobado_listo'
@@ -189,12 +190,35 @@ export interface NotificacionGerencia {
   proyectoId?: string;
   nombreProyecto?: string;
   leida: boolean;
-  tipo: 'nuevo_proyecto' | 'proyecto_comercializado' | 'dictamen_general' | 'alerta';
+  tipo: 'nuevo_proyecto' | 'proyecto_comercializado' | 'dictamen_general' | 'alerta' | 'silabo_creado_revision_gg' | 'aprobado_gg_a_comercializacion' | 'retorno_gg_a_academica';
+  // Datos de notificación por correo electrónico
+  destinatariosEmails?: string[];
+  asuntoEmail?: string;
+  cuerpoEmail?: string;
+  codigoEmpresa?: string;
+  codigoSAR?: string;
+  correlativoSAR?: string;
+  estadoEnvioEmail?: 'enviado' | 'simulado';
+  fechaEnvioEmail?: string;
   accion?: {
     etiqueta: string;
     vistaDestino: VistaPrincipal;
     proyectoId?: string;
   };
+}
+
+export interface AvisoProyectoItem {
+  id: string;
+  fechaHora: string;
+  origen: 'Gerencia Académica' | 'Gerencia General' | 'Gerencia de Comercialización' | 'Sistema';
+  destino: 'Gerencia General' | 'Gerencia de Comercialización' | 'Gerencia Académica' | 'Todas las Gerencias';
+  etapa: EtapaFlujoProyecto;
+  titulo: string;
+  descripcion: string;
+  codigoEmpresa: string;
+  codigoSAR: string;
+  correosNotificados: string[];
+  estadoEnvio: 'Enviado' | 'Entregado';
 }
 
 export interface ProyectoEducativo {
@@ -227,10 +251,20 @@ export interface ProyectoEducativo {
   // Aprobación Final de la Gerencia General & Deducción de Meta POA Mensual
   aprobacionFinalGerenciaGeneral?: boolean; // true si cuenta con la aprobación final de GG
   fechaAprobacionGerenciaGeneral?: string; // Fecha en que GG emitió su aprobación final
-  aprobadoPorGerenciaGeneral?: string; // Nombre y cargo de quien aprobó (ej: "Dr. Walter Pedroza - Gerencia General")
+  aprobadoPorGerenciaGeneral?: string | boolean; // Nombre y cargo de quien aprobó (ej: "Dr. Walter Pedroza - Gerencia General") o flag booleano
   observacionesAprobacionGeneral?: string; // Dictamen u observaciones de la Gerencia General
   montoFacturacionAprobadaHNL?: number; // Monto facturado que rebaja la cuota del mes del POA
   
+  // Clasificación: Estructura Básica Curricular (Sílabo) vs Curso/Proyecto Operativo
+  esSilaboBase?: boolean; // True si es la estructura pedagógica básica para el curso (diseñada en Gerencia Académica, NO se envía a comercialización)
+  tieneSilabo?: boolean; // True si tiene un sílabo oficial formalizado
+  creadoPorAcademica?: boolean; // True si fue creado por Gerencia Académica
+  origenRegistro?: string; // Origen del registro (ej: 'gerencia-academica')
+  tipoRegistro?: 'curso_proyecto' | 'silabo_base' | 'silabo_oficial';
+  silaboOrigenId?: string; // ID del sílabo oficial de donde proviene la estructura pedagógica
+  codigoSilaboOrigen?: string; // Código del sílabo oficial vinculado (ej: SMT-DIP-2026-001)
+  nombreSilaboOrigen?: string; // Nombre del sílabo oficial vinculado
+
   // Control de Plazo de Comercialización & Decisión Institucional (20 días calendario desde la creación por Gerencia Académica)
   fechaElaboracion?: string; // Fecha en que la Gerencia Académica elaboró / registró el proyecto
   horaElaboracion?: string; // Hora en que la Gerencia Académica elaboró / registró el proyecto
@@ -246,6 +280,8 @@ export interface ProyectoEducativo {
   procesoCerrado?: boolean; // True si el proceso ha sido cerrado automáticamente (No se llevó a cabo)
 
   // Flujo inter-gerencial y Auditoría de Cumplimiento
+  gerenciaOrigen?: 'gerencia-academica' | 'gerencia-comercializacion' | 'gerencia-general' | 'sistema';
+  creadoPorGerencia?: 'gerencia-academica' | 'gerencia-comercializacion' | 'gerencia-general';
   fechaCreacion?: string; // Timestamp ISO cuando se crea el proyecto (inicia el cronómetro del flujo)
   horaCreacion?: string; // Hora formateada en que se grabó el proyecto (ej: "10:30:15 AM")
   fechaHoraGrabacion?: string; // Fecha y hora completa de grabación del proyecto (ej: "06/09/2026, 10:30:15 AM")
@@ -266,12 +302,16 @@ export interface ProyectoEducativo {
   autorizacionAcademica?: boolean; // True si Académica completó y autorizó el proyecto
   fechaAutorizacionAcademica?: string;
   responsableAcademico?: string;
+  aprobadoPorAcademica?: string;
+  observacionesAutorizacionAcademica?: string;
   
   // Paso 2: Gerencia de Comercialización
   comercializacionCompletada?: boolean;
   autorizacionComercial?: boolean; // True si Comercialización completó venta y autorizó paso a GG
   fechaAutorizacionComercial?: string;
   responsableComercial?: string;
+  aprobadoPorComercial?: string;
+  observacionesAutorizacionComercial?: string;
   fechaNotificacionComercial?: string;
   fechaNotificacionGeneral?: string;
   
@@ -280,7 +320,22 @@ export interface ProyectoEducativo {
   
   // Control de Correlativo Automático & Enlace Fiscal SAR
   numeroCorrelativo?: number; // Correlativo secuencial automático (1, 2, 3, ...)
-  codigoFiscalSAR?: string; // Código de control fiscal SAR para ISV (ej. SAR-2026-001)
+  codigoProyecto?: string; // Código de control interno institucional de la empresa (ej: SIG-ACAD-2026-001)
+  codigoPrograma?: string; // Mantenido para retrocompatibilidad
+  correlativoSAR?: string; // Correlativo oficial SAR para control fiscal (ej: 000-001-01-00000001)
+  codigoFiscalSAR?: string; // Código de control fiscal SAR para ISV (ej. SAR-ISV-2026-001)
+
+  // Nuevo Flujo Inter-Gerencial: Académica -> Gerencia General -> Comercialización
+  fechaEnvioRevisionGG?: string; // Fecha en que Académica grabó y remitió el sílabo a GG
+  aprobadoPorGerenciaGeneralPrevia?: boolean; // True si GG ya revisó y aprobó formalmente el sílabo
+  aprobadoGerenciaGeneral?: boolean; // Alias
+  fechaAprobacionGerenciaGeneralPrevia?: string; // Fecha en que GG emitió aprobación para pasar a comercialización
+  fechaRevisionGerenciaGeneral?: string; // Alias
+  observacionesRevisionGeneral?: string; // Dictamen u observaciones de GG antes de comercialización
+  observacionesGerenciaGeneral?: string; // Alias
+  fechaEnvioComercializacion?: string; // Fecha en que fue remitido a Comercialización tras aprobación de GG
+  avisosProyecto?: AvisoProyectoItem[]; // Bitácora oficial de avisos inter-gerenciales y notificaciones enviadas
+  precioSugeridoVentaNeto?: number; // Alias para precio neto sugerido por alumno
 
   // Tratamiento Fiscal ISV (SAR)
   servicioFiscal?: TipoServicioFiscal;
@@ -314,7 +369,6 @@ export interface ProyectoEducativo {
   seccion?: string; // Ej: "Sección A", "Sec. 01", "Matutina-A", "Fin de Semana"
   horario?: string; // Ej: "06:00 PM - 08:00 PM", "08:00 AM - 12:00 PM", "19:00 - 21:00"
   diasClase?: string; // Ej: "Lunes a Jueves", "Sábados", "Lunes, Miércoles y Viernes", "Martes y Jueves"
-  codigoPrograma?: string;
   horasTeoricas?: number;
   horasPracticas?: number;
   modalidad?: 'Virtual Sincrónica' | 'Presencial' | 'Híbrida' | 'Asincrónica LMS';
@@ -755,7 +809,7 @@ export interface ChecklistCierreMensual {
 }
 
 export interface RegistroCierreMensual {
-  mesKey: string; // Formato 'YYYY-MM', ej: '2026-08'
+  mesKey: string; // Formato 'YYYY-MM', ej: '2026-09'
   anio: number;
   mesNumero: number;
   etiquetaMes: string;
@@ -764,9 +818,9 @@ export interface RegistroCierreMensual {
   cerradoPor?: string;
   cargoCerrador?: string;
   
-  // Metas POA 2027
-  metaProyectosPOA: number; // Por defecto 10
-  breakEvenProyectosPOA: number; // Por defecto 4
+  // Metas POA 2026 (Sep - Dic 2026)
+  metaProyectosPOA: number; // Por defecto 18.5
+  breakEvenProyectosPOA: number; // Por defecto 17.3
   proyectosRegistrados: number;
   proyectosCompletados: number;
   proyectosEnCurso: number;

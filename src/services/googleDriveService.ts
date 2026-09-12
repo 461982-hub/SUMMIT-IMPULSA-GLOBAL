@@ -15,10 +15,24 @@ import { formatearMoneda, calcularMetricasProyecto } from '../utils/calculations
 export const TARGET_DRIVE_FOLDER_ID = '1BfPp5crIA2H5XDqm1010aqtXXGzmS-Rw';
 export const TARGET_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1BfPp5crIA2H5XDqm1010aqtXXGzmS-Rw?usp=sharing';
 
-// Scopes necesarios para Google Drive y Google Calendar
+// Scopes necesarios para Google Drive, Google Sheets, Google Calendar, Gmail, Google Forms y Google Meet
 export const DRIVE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/spreadsheets.readonly',
+  'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/gmail.compose',
+  'https://mail.google.com/',
+  'https://www.googleapis.com/auth/forms.body',
+  'https://www.googleapis.com/auth/forms.body.readonly',
+  'https://www.googleapis.com/auth/forms.responses.readonly',
+  'https://www.googleapis.com/auth/meetings.space.created',
+  'https://www.googleapis.com/auth/meetings.space.readonly',
+  'https://www.googleapis.com/auth/meetings.space.settings',
 ];
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();

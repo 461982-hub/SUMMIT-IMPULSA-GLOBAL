@@ -15,7 +15,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda } from '../../types';
-import { formatearHNL } from '../../utils/poa2027Data';
+import { formatearHNL } from '../../utils/poa2026Data';
 
 interface CommercialAdvisorCommissionCalculatorModalProps {
   isOpen: boolean;

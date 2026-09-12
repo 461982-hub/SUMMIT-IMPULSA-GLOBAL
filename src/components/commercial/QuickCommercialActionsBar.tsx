@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda } from '../../types';
 import { calcularMetricasProyecto } from '../../utils/calculations';
-import { formatearHNL } from '../../utils/poa2027Data';
+import { formatearHNL } from '../../utils/poa2026Data';
 
 interface QuickCommercialActionsBarProps {
   proyectos: ProyectoEducativo[];

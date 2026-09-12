@@ -15,7 +15,16 @@ import {
   GraduationCap,
   Award,
   Settings,
-  Users
+  Users,
+  CheckCircle2,
+  Mail,
+  Phone,
+  DollarSign,
+  ShieldCheck,
+  Download,
+  RotateCcw,
+  Paperclip,
+  Check
 } from 'lucide-react';
 import { TipoProyecto, NivelProyecto, ProyectoEducativo } from '../types';
 import { 
@@ -29,8 +38,12 @@ import {
 } from '../utils/curricularUtils';
 import { ConfiguracionHorasNivelModal } from './ConfiguracionHorasNivelModal';
 import { CurricularCoherenceAlerts } from './academic/CurricularCoherenceAlerts';
-import { DocenteDirectoryModal } from './academic/DocenteDirectoryModal';
-import { DocenteBanco } from '../utils/docenteDirectoryUtils';
+import { 
+  DocenteBanco, 
+  obtenerBancoDocentes 
+} from '../utils/docenteDirectoryUtils';
+import { generarSilaboPdfOficial } from '../utils/syllabusPdfGenerator';
+import { formatearMoneda } from '../utils/calculations';
 
 interface CurricularPlanningSectionProps {
   cantidadTemas: number;
@@ -49,7 +62,25 @@ interface CurricularPlanningSectionProps {
   proyectosExistentes?: ProyectoEducativo[];
   proyectoIdActual?: string;
   nombreDocente?: string;
+  docenteEspecialidad?: string;
+  docenteCorreo?: string;
+  docenteTelefono?: string;
+  docenteClasificacion?: string;
+  tarifaHoraDocente?: number | string;
+  objetivoGeneral?: string;
+  temasImpartir?: string;
+  modalidad?: string;
+  horario?: string;
+  diasClase?: string;
   onDocenteSeleccionado?: (docente: DocenteBanco) => void;
+  onDocenteDatosChange?: (cambios: Partial<{
+    nombreDocente: string;
+    docenteClasificacion: string;
+    docenteTelefono: string;
+    docenteCorreo: string;
+    docenteEspecialidad: string;
+    tarifaHoraDocente: number | string;
+  }>) => void;
   onNivelChange?: (valor: NivelProyecto, config?: { cantidadTemas: number; horasPorTema: number; totalHoras: number }) => void;
   onCantidadTemasChange: (valor: number) => void;
   onHorasClasePorTemaChange: (valor: number) => void;
@@ -77,7 +108,18 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
   proyectosExistentes = [],
   proyectoIdActual,
   nombreDocente,
+  docenteEspecialidad,
+  docenteCorreo,
+  docenteTelefono,
+  docenteClasificacion,
+  tarifaHoraDocente = 200,
+  objetivoGeneral = '',
+  temasImpartir = '',
+  modalidad,
+  horario,
+  diasClase,
   onDocenteSeleccionado,
+  onDocenteDatosChange,
   onNivelChange,
   onCantidadTemasChange,
   onHorasClasePorTemaChange,
@@ -92,7 +134,40 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
   const [errorPdf, setErrorPdf] = useState<string | null>(null);
   const [sugerenciaAplicada, setSugerenciaAplicada] = useState(false);
   const [modalConfigAbierto, setModalConfigAbierto] = useState(false);
-  const [modalDocentesAbierto, setModalDocentesAbierto] = useState(false);
+  const [docentesBanco, setDocentesBanco] = useState<DocenteBanco[]>([]);
+  const [generandoSilabo, setGenerandoSilabo] = useState(false);
+  const [mensajeExitoSilabo, setMensajeExitoSilabo] = useState<string | null>(null);
+
+  // Cargar lista de docentes del banco y escuchar actualizaciones
+  useEffect(() => {
+    const cargarDocentes = () => {
+      setDocentesBanco(obtenerBancoDocentes());
+    };
+    cargarDocentes();
+
+    const handleActualizacion = () => cargarDocentes();
+    window.addEventListener('summit_banco_docentes_actualizado', handleActualizacion);
+    return () => window.removeEventListener('summit_banco_docentes_actualizado', handleActualizacion);
+  }, []);
+
+  // Buscar docente actual seleccionado en el banco
+  const docenteEnBanco = docentesBanco.find(
+    (d) => d.nombre.toLowerCase().trim() === (nombreDocente || '').toLowerCase().trim()
+  );
+
+  // Objeto con datos completos del docente (del banco o de los campos del formulario asignados en Perfil Docente)
+  const infoDocenteMostrable = docenteEnBanco || (nombreDocente && nombreDocente.trim().length > 0 ? {
+    id: 'manual',
+    nombre: nombreDocente,
+    titulo: docenteClasificacion || 'Instructor Especialista',
+    especialidad: docenteEspecialidad || 'Capacitación Profesional',
+    email: docenteCorreo || '',
+    correo: docenteCorreo || '',
+    telefono: docenteTelefono || '',
+    tarifaHoraSugerida: Number(tarifaHoraDocente) || 200,
+    calificacionNPS: 4.8,
+    estadoSAR: 'Al Día' as const,
+  } : null);
 
   // Manejar cambio de nivel académico del curso y colocar automáticamente las horas para costos operativos
   const handleNivelSelect = (nuevoNivel: NivelProyecto) => {
@@ -138,7 +213,60 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
     setTimeout(() => setSugerenciaAplicada(false), 3000);
   };
 
-  // Procesar archivo PDF
+  // Validación de requisitos previos para el Sílabo Oficial
+  const tieneNombreProyecto = Boolean(nombreProyecto && nombreProyecto.trim().length >= 3);
+  const tieneDocente = Boolean(nombreDocente && nombreDocente.trim().length >= 2);
+  const tieneHoras = Boolean(totalHorasCurso && totalHorasCurso > 0);
+  const tieneMetodologia = Boolean(metodologia && metodologia.trim().length >= 4);
+  const requisitosSilaboCompletos = tieneNombreProyecto && tieneDocente && tieneHoras && tieneMetodologia;
+
+  // Generación automática del Sílabo Oficial en PDF con Summit Impulsa
+  const handleGenerarSilaboOficial = () => {
+    if (!requisitosSilaboCompletos) return;
+
+    setGenerandoSilabo(true);
+    setErrorPdf(null);
+
+    try {
+      const tarifaActual = infoDocenteMostrable?.tarifaHoraSugerida || Number(tarifaHoraDocente) || 200;
+      const resultadoPdf = generarSilaboPdfOficial({
+        nombreProyecto: nombreProyecto.trim(),
+        codigoPrograma: proyectoIdActual,
+        tipoProyecto,
+        nivel: nivelProyecto || 'Básico',
+        cantidadTemas,
+        horasClasePorTema,
+        totalHorasCurso,
+        metodologia,
+        objetivoGeneral,
+        temasImpartir,
+        modalidad,
+        horario,
+        diasClase,
+        docente: infoDocenteMostrable ? {
+          nombre: infoDocenteMostrable.nombre,
+          titulo: infoDocenteMostrable.titulo,
+          especialidad: infoDocenteMostrable.especialidad,
+          email: infoDocenteMostrable.email || (infoDocenteMostrable as any).correo,
+          telefono: infoDocenteMostrable.telefono,
+          tarifaHoraSugerida: tarifaActual,
+          biografia: infoDocenteMostrable.biografia,
+          estadoSAR: infoDocenteMostrable.estadoSAR,
+        } : undefined,
+      });
+
+      onPlanificacionPdfChange(resultadoPdf);
+      setMensajeExitoSilabo('¡Sílabo Oficial generado y adjuntado exitosamente en formato PDF con formato institucional!');
+      setTimeout(() => setMensajeExitoSilabo(null), 4000);
+    } catch (err) {
+      console.error('Error al generar sílabo oficial:', err);
+      setErrorPdf('Ocurrió un error al compilar el documento PDF del Sílabo. Verifique los datos ingresados.');
+    } finally {
+      setGenerandoSilabo(false);
+    }
+  };
+
+  // Procesar archivo PDF subido manualmente
   const procesarArchivoPDF = async (file: File) => {
     setErrorPdf(null);
     const validacion = validarArchivoPDF(file);
@@ -186,42 +314,43 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
     }
   };
 
+  const descargarPDF = () => {
+    if (!planificacionPdf?.dataUrl) return;
+    const a = document.createElement('a');
+    a.href = planificacionPdf.dataUrl;
+    a.download = planificacionPdf.nombreArchivo || 'Silabo_Oficial_Summit.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const costoDocenteCalculado = totalHorasCurso * (infoDocenteMostrable?.tarifaHoraSugerida || Number(tarifaHoraDocente) || 200);
+
   return (
     <div className="bg-white rounded-2xl border border-blue-200/80 shadow-xs p-4 sm:p-5 space-y-5">
       {/* Encabezado de la Sección */}
-      <div className="flex items-center justify-between border-b border-blue-100 pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-blue-100 pb-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
             <BookOpen className="w-4 h-4" />
           </div>
           <div>
             <h3 className="text-xs font-bold text-blue-950 uppercase tracking-wider flex items-center gap-2">
-              Planificación Curricular, Horas por Tema & Metodología
+              Planificación Curricular & Sílabo Oficial
             </h3>
             <p className="text-[11px] text-slate-500">
-              Desglose temático, cálculo paramétrico de horas y carga de documento oficial en PDF.
+              Estructure el nivel académico, horas y metodología pedagógica para emitir el Sílabo Oficial en PDF con sincronización automática.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {!modoLectura && onDocenteSeleccionado && (
-            <button
-              type="button"
-              onClick={() => setModalDocentesAbierto(true)}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
-              title="Abrir el Banco de Docentes para seleccionar instructor y transferir tarifa automáticamente a Costos Operativos"
-            >
-              <Users className="w-3.5 h-3.5 text-indigo-600" />
-              <span>👥 Banco de Docentes</span>
-            </button>
-          )}
-          <span className="text-[10px] font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] font-bold text-blue-800 bg-blue-50 px-2 py-1 rounded border border-blue-200">
             Gerencia Académica
           </span>
         </div>
       </div>
 
-      {/* Bloque 1: Nivel del Curso (Ubicado antes del Desglose y Total de Horas) */}
+      {/* Bloque 1: Nivel del Curso */}
       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
@@ -489,13 +618,13 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
         />
       </div>
 
-      {/* Bloque 3: Metodología a Implementar (con sugerencias por lógica) */}
+      {/* Bloque 3: Metodología a Implementar */}
       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
             <label className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              3. Metodología a Implementar <span className="text-rose-500">*</span>
+              3. Metodología Pedagógica a Implementar <span className="text-rose-500">*</span>
             </label>
           </div>
 
@@ -557,32 +686,99 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
         )}
       </div>
 
-      {/* Bloque 4: Carga de Documento de Planificación del Curso (Solo formato PDF) */}
+      {/* Bloque 4: Sílabo Oficial del Programa (Documento PDF) */}
       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <FileText className="w-3.5 h-3.5 text-blue-600" />
             <label className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              4. Documento de Planificación del Curso
+              4. Sílabo Oficial y Documento Curricular (.PDF)
             </label>
           </div>
-          <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-            Solo Formato PDF (.pdf)
+          <span className="text-[10px] font-black uppercase tracking-wider text-blue-800 bg-blue-100 px-2 py-0.5 rounded border border-blue-300">
+            Formato Institucional Summit Impulsa
           </span>
         </div>
 
-        {/* Mensaje de error de formato si aplica */}
+        {/* Mensaje de Éxito al Generar Sílabo */}
+        {mensajeExitoSilabo && (
+          <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-900 flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{mensajeExitoSilabo}</span>
+          </div>
+        )}
+
+        {/* Mensaje de Error si Aplica */}
         {errorPdf && (
           <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2 animate-in fade-in">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold">Error en el archivo</p>
+              <p className="font-bold">Aviso en el documento</p>
               <p className="text-[11px]">{errorPdf}</p>
             </div>
           </div>
         )}
 
-        {/* Estado si YA hay un PDF cargado */}
+        {/* Validación de Requisitos: Si falta información previa, se coloca el mensaje correspondiente */}
+        {!requisitosSilaboCompletos ? (
+          <div className="p-4 rounded-xl border border-amber-300 bg-amber-50/90 text-amber-950 space-y-2.5">
+            <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase tracking-wider">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Primero debe llenar lo solicitado para el Sílabo Oficial</span>
+            </div>
+            <p className="text-xs text-amber-900 font-medium leading-relaxed">
+              Para estructurar o generar el <strong>Sílabo Oficial en PDF</strong> con la debida validez académica, cálculo de honorarios y firmas institucionales, primero debe completar los siguientes datos requeridos del proyecto:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
+              <div className={`p-2 rounded-lg border flex items-center gap-2 ${tieneNombreProyecto ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-white border-amber-300 text-amber-950 font-bold'}`}>
+                <span>{tieneNombreProyecto ? '✓' : '⚠️'}</span>
+                <span>1. Nombre del Programa: <strong>{tieneNombreProyecto ? nombreProyecto : 'Pendiente de ingresar'}</strong></span>
+              </div>
+
+              <div className={`p-2 rounded-lg border flex items-center gap-2 ${tieneDocente ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-white border-amber-300 text-amber-950 font-bold'}`}>
+                <span>{tieneDocente ? '✓' : '⚠️'}</span>
+                <span>2. Docente Asignado: <strong>{tieneDocente ? (infoDocenteMostrable?.nombre || nombreDocente) : 'Pendiente en Perfil Docente arriba'}</strong></span>
+              </div>
+
+              <div className={`p-2 rounded-lg border flex items-center gap-2 ${tieneHoras ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-white border-amber-300 text-amber-950 font-bold'}`}>
+                <span>{tieneHoras ? '✓' : '⚠️'}</span>
+                <span>3. Horas de Clase: <strong>{tieneHoras ? `${totalHorasCurso} hrs (${cantidadTemas} temas)` : 'Pendiente'}</strong></span>
+              </div>
+
+              <div className={`p-2 rounded-lg border flex items-center gap-2 ${tieneMetodologia ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-white border-amber-300 text-amber-950 font-bold'}`}>
+                <span>{tieneMetodologia ? '✓' : '⚠️'}</span>
+                <span>4. Metodología: <strong>{tieneMetodologia ? 'Seleccionada' : 'Pendiente'}</strong></span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Requisitos Previos Completados: Opción de Generar Sílabo Oficial con 1 Clic */
+          <div className="p-3 bg-emerald-50/90 border border-emerald-300 rounded-xl text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <div>
+                <span className="font-bold block">✓ Información Requerida Completa</span>
+                <span className="text-[11px] text-emerald-800">
+                  El programa formativo y el docente están listos para emitir el Sílabo Oficial estandarizado en PDF.
+                </span>
+              </div>
+            </div>
+            {!modoLectura && (
+              <button
+                type="button"
+                onClick={handleGenerarSilaboOficial}
+                disabled={generandoSilabo}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer shrink-0"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>{generandoSilabo ? 'Generando PDF...' : '⚡ Generar Sílabo Oficial en PDF'}</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Estado si YA hay un PDF cargado o generado */}
         {planificacionPdf?.dataUrl ? (
           <div className="bg-white p-3.5 rounded-xl border border-emerald-300 bg-emerald-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
             <div className="flex items-center gap-3">
@@ -592,7 +788,7 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 bg-emerald-200 text-emerald-900 rounded">
-                    PDF Cargado
+                    Sílabo Oficial PDF Adjunto
                   </span>
                   {planificacionPdf.tamanoKb && (
                     <span className="text-[10px] text-slate-500 font-mono">
@@ -605,31 +801,55 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
                 </h4>
                 {planificacionPdf.fechaCarga && (
                   <p className="text-[10px] text-slate-400">
-                    Cargado: {new Date(planificacionPdf.fechaCarga).toLocaleDateString()}
+                    Cargado / Emitido: {new Date(planificacionPdf.fechaCarga).toLocaleDateString()}
                   </p>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={abrirVisualizadorPDF}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
-                title="Ver o descargar documento PDF"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer"
+                title="Ver o imprimir documento PDF"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Ver PDF</span>
               </button>
 
+              <button
+                type="button"
+                onClick={descargarPDF}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-300 transition-colors cursor-pointer shadow-2xs"
+                title="Descargar archivo PDF"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-600" />
+                <span>Descargar</span>
+              </button>
+
               {!modoLectura && (
                 <>
+                  {requisitosSilaboCompletos && (
+                    <button
+                      type="button"
+                      onClick={handleGenerarSilaboOficial}
+                      disabled={generandoSilabo}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold border border-indigo-200 transition-colors cursor-pointer"
+                      title="Regenerar con datos actualizados"
+                    >
+                      <RotateCcw className="w-3 h-3 text-indigo-600" />
+                      <span>Regenerar</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-200 transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
+                    title="Cargar otro archivo PDF externo"
                   >
-                    <span>Reemplazar</span>
+                    <span>Subir Otro</span>
                   </button>
 
                   <button
@@ -638,7 +858,7 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
                       onPlanificacionPdfChange(undefined);
                       if (fileInputRef.current) fileInputRef.current.value = '';
                     }}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                     title="Eliminar PDF cargado"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -648,7 +868,7 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
             </div>
           </div>
         ) : (
-          /* Zona de Carga Drag & Drop para PDF */
+          /* Zona de Carga Drag & Drop para PDF Externo */
           !modoLectura && (
             <div
               onDragOver={(e) => {
@@ -658,20 +878,20 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+              className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${
                 dragOver
                   ? 'border-blue-500 bg-blue-50/70 scale-[0.99]'
                   : 'border-slate-300 hover:border-blue-400 bg-white hover:bg-slate-50/60'
               }`}
             >
-              <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-2">
-                <UploadCloud className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-1.5">
+                <UploadCloud className="w-4 h-4" />
               </div>
               <p className="text-xs font-bold text-slate-800">
-                Arrastre aquí el documento de <span className="text-blue-600">Planificación del Curso</span> o haga clic para buscar
+                Arrastre aquí el documento del <span className="text-blue-600">Sílabo Curricular</span> o haga clic para buscar
               </p>
               <p className="text-[11px] text-slate-500 mt-1">
-                Formato requerido: <strong>Documento PDF (.pdf)</strong> • Tamaño máx: 25 MB
+                Formato admitido: <strong>Documento PDF (.pdf)</strong> • Máx 25 MB
               </p>
             </div>
           )
@@ -704,15 +924,6 @@ export const CurricularPlanningSection: React.FC<CurricularPlanningSectionProps>
               totalHoras: cfg.totalHoras
             });
           }
-        }}
-      />
-
-      {/* Modal del Banco y Directorio de Docentes */}
-      <DocenteDirectoryModal
-        isOpen={modalDocentesAbierto}
-        onClose={() => setModalDocentesAbierto(false)}
-        onSeleccionarDocente={(docente) => {
-          onDocenteSeleccionado?.(docente);
         }}
       />
     </div>

@@ -9,7 +9,7 @@ import { ProjectExecutiveReportModal } from './components/ProjectExecutiveReport
 import { ReportsCenterModal } from './components/executive/ReportsCenterModal';
 import { ExportMonthlyReportModal } from './components/executive/ExportMonthlyReportModal';
 import { GerenciaGeneralView, SubPestanaGeneral } from './components/GerenciaGeneralView';
-import { GerenciaAcademicaView } from './components/GerenciaAcademicaView';
+import { GerenciaAcademicaView, SubPestanaAcademica } from './components/GerenciaAcademicaView';
 import { GerenciaComercializacionView } from './components/GerenciaComercializacionView';
 import { NotificationsCenterModal } from './components/NotificationsCenterModal';
 import { NotificationBannerToast } from './components/NotificationBannerToast';
@@ -27,17 +27,22 @@ import {
   crearEntradaHistorialCreacion, 
   crearEntradaHistorialManual 
 } from './utils/historyUtils';
-import { asegurarCorrelativos, generarSiguienteCorrelativo } from './utils/correlativoUtils';
+import { asegurarCorrelativos, asegurarCorrelativoUnico, generarSiguienteCorrelativo } from './utils/correlativoUtils';
 import { 
   crearNotificacionNuevoProyecto, 
   crearNotificacionProyectoComercializado, 
   crearNotificacionDictamenGeneral,
+  crearNotificacionSilaboGrabadoRevisionGG,
+  crearNotificacionAprobacionGGAComercializacion,
   cargarNotificacionesGuardadas,
   guardarNotificacionesStorage
 } from './utils/notificationUtils';
 import { useGoogleDriveAutoSync } from './utils/useGoogleDriveAutoSync';
 import { GoogleDriveSyncBar } from './components/GoogleDriveSyncBar';
 import { GoogleDriveSyncModal } from './components/GoogleDriveSyncModal';
+import { GoogleSheetsModal } from './components/GoogleSheetsModal';
+import { GoogleFormsModal } from './components/GoogleFormsModal';
+import { GoogleMeetGerenciasModal } from './components/GoogleMeetGerenciasModal';
 import { DirectorioGerenciasModal } from './components/DirectorioGerenciasModal';
 import { POATableroControlModal } from './components/POATableroControlModal';
 import { GerenciaGeneralAuthModal } from './components/GerenciaGeneralAuthModal';
@@ -48,14 +53,15 @@ import { driveAuth } from './services/googleDriveService';
 import { Footer } from './components/Footer';
 import { ShieldAlert, ArrowRight, ShieldCheck, CalendarDays, X, Filter, FileDown } from 'lucide-react';
 
-const STORAGE_KEY = 'matriz_rentabilidad_proyectos_poa2026_real';
+const STORAGE_KEY = 'matriz_rentabilidad_proyectos_poa2026_v5_manual';
 const MONEDA_KEY = 'matriz_rentabilidad_moneda_v3';
 
 export default function App() {
   const [proyectos, setProyectos] = useState<ProyectoEducativo[]>(() => {
     try {
-      // Limpiar versiones anteriores y proyectos ficticios de prueba para arrancar con números reales del POA 2026
+      // Limpiar versiones anteriores y proyectos ficticios de prueba para arrancar de cero de forma manual
       const clavesObsoletas = [
+        'matriz_rentabilidad_proyectos_poa2026_real',
         'matriz_rentabilidad_proyectos_v3_user',
         'matriz_rentabilidad_proyectos_v1',
         'matriz_rentabilidad_proyectos_v2',
@@ -90,7 +96,7 @@ export default function App() {
     } catch (e) {
       console.error('Error al cargar datos guardados:', e);
     }
-    // Estado inicial completamente limpio en blanco para ingresar proyectos y números reales del POA 2026
+    // Estado inicial completamente limpio en blanco para ingresar proyectos de forma manual
     return [];
   });
 
@@ -106,8 +112,9 @@ export default function App() {
     return 'LPS';
   });
 
-  const [vistaActual, setVistaActual] = useState<VistaPrincipal>('gerencia-general');
+  const [vistaActual, setVistaActual] = useState<VistaPrincipal>('gerencia-academica');
   const [subPestanaGeneral, setSubPestanaGeneral] = useState<SubPestanaGeneral>('dashboard');
+  const [subPestanaAcademica, setSubPestanaAcademica] = useState<SubPestanaAcademica>('proyectos_creados');
   const [mesFiltro, setMesFiltro] = useState<string>('todos');
 
   // Modales
@@ -121,6 +128,9 @@ export default function App() {
   const [proyectoAEliminar, setProyectoAEliminar] = useState<ProyectoEducativo | null>(null);
 
   const [isSimulatorModalOpen, setIsSimulatorModalOpen] = useState(false);
+  const [isGoogleSheetsModalOpen, setIsGoogleSheetsModalOpen] = useState(false);
+  const [isGoogleFormsModalOpen, setIsGoogleFormsModalOpen] = useState(false);
+  const [isGoogleMeetGerenciasModalOpen, setIsGoogleMeetGerenciasModalOpen] = useState(false);
 
   // Modal para Reporte Ejecutivo en PDF
   const [isPDFReportModalOpen, setIsPDFReportModalOpen] = useState(false);
@@ -331,6 +341,14 @@ export default function App() {
   };
 
   const handleSolicitarEliminar = (p: ProyectoEducativo) => {
+    // Si la acción se originó en Gerencia Académica o el proyecto fue creado por Académica,
+    // se abre el modal de confirmación de eliminación directamente sin requerir PIN de GG
+    if (vistaActual === 'gerencia-academica' || p.gerenciaOrigen === 'gerencia-academica' || p.creadoPorGerencia === 'gerencia-academica') {
+      setProyectoAEliminar(p);
+      setIsDeleteModalOpen(true);
+      return;
+    }
+
     ejecutarConSeguridadGG(() => {
       setProyectoAEliminar(p);
       setIsDeleteModalOpen(true);
@@ -345,10 +363,19 @@ export default function App() {
   };
 
   const handleConfirmarEliminar = (id: string) => {
-    ejecutarConSeguridadGG(() => {
-      setProyectos((prev) => prev.filter((p) => p.id !== id));
-      mostrarToast('Proyecto eliminado de la matriz');
-    }, 'confirmar la eliminación del proyecto');
+    setProyectos((prev) => prev.filter((p) => p.id !== id));
+    mostrarToast('Proyecto eliminado de la matriz institucional');
+  };
+
+  const handleEliminarMultiples = (ids: string[]) => {
+    setProyectos((prev) => prev.filter((p) => !ids.includes(p.id)));
+    mostrarToast(`${ids.length} proyectos eliminados de la matriz`);
+  };
+
+  const handleVerProyectosAcademicos = () => {
+    setVistaActual('gerencia-academica');
+    setSubPestanaAcademica('proyectos_creados');
+    mostrarToast('Visualizando proyectos creados por la Gerencia Académica');
   };
 
   const ejecutarGuardadoInterno = (proyectoGuardado: ProyectoEducativo, origenVista?: string) => {
@@ -370,10 +397,13 @@ export default function App() {
     });
 
     setProyectos((prev) => {
-      const index = prev.findIndex((p) => p.id === proyectoGuardado.id);
+      // Garantizar que siempre tenga los correlativos automáticos de Empresa y SAR
+      const proyectoConCorrelativos = asegurarCorrelativoUnico(proyectoGuardado, prev);
+
+      const index = prev.findIndex((p) => p.id === proyectoConCorrelativos.id);
       if (index >= 0) {
         const proyectoAnterior = prev[index];
-        const nuevoCambio = detectarCambiosProyecto(proyectoAnterior, proyectoGuardado);
+        const nuevoCambio = detectarCambiosProyecto(proyectoAnterior, proyectoConCorrelativos);
         
         let historialActualizado = [...(proyectoAnterior.historialCambios || [])];
         if (nuevoCambio) {
@@ -381,7 +411,7 @@ export default function App() {
         }
 
         const proyectoConHistorial: ProyectoEducativo = {
-          ...proyectoGuardado,
+          ...proyectoConCorrelativos,
           horaUltimaModificacion: horaActualFormateada,
           historialCambios: historialActualizado,
         };
@@ -389,47 +419,80 @@ export default function App() {
         const actualizados = [...prev];
         actualizados[index] = proyectoConHistorial;
 
-        // Detectar si fue trabajado en Gerencia de Comercialización
+        // 1. Detectar si Gerencia General aprobó el sílabo y lo traslada a Comercialización
+        const pasaAComercializacionDesdeGG = 
+          (proyectoConHistorial.aprobadoGerenciaGeneral && !proyectoAnterior.aprobadoGerenciaGeneral) ||
+          (proyectoConHistorial.etapaFlujo === 'comercializacion' && proyectoAnterior.etapaFlujo === 'revision_gerencia_general');
+
+        // 2. Detectar si fue grabado desde Sílabo / Gerencia Académica y enviado a Gerencia General
+        const esGrabacionAcademica = 
+          (origenVista === 'silabo' || origenVista === 'gerencia-academica') &&
+          (proyectoConHistorial.etapaFlujo === 'revision_gerencia_general' || !proyectoAnterior.autorizacionAcademica);
+
+        // 3. Detectar si fue trabajado en Gerencia de Comercialización
         const esTrabajoComercial = 
-          (proyectoGuardado.comercializacionCompletada && !proyectoAnterior.comercializacionCompletada) ||
+          (proyectoConHistorial.comercializacionCompletada && !proyectoAnterior.comercializacionCompletada) ||
           origenVista === 'gerencia-comercializacion' ||
           vistaActual === 'gerencia-comercializacion';
 
-        if (esTrabajoComercial) {
+        if (pasaAComercializacionDesdeGG) {
+          const { notificacion: notifCom, aviso } = crearNotificacionAprobacionGGAComercializacion(
+            proyectoConHistorial,
+            proyectoConHistorial.observacionesGerenciaGeneral
+          );
+          const avisosPrevios = proyectoConHistorial.avisosProyecto || [];
+          proyectoConHistorial.avisosProyecto = [aviso, ...avisosPrevios];
+          setNotificaciones((prevNotifs) => [notifCom, ...prevNotifs]);
+          setNotificacionActivaBanner(notifCom);
+          mostrarToast(`¡Sílabo aprobado por Gerencia General! Remitido a Gerencia de Comercialización para inicio de captación.`);
+        } else if (esGrabacionAcademica) {
+          const { notificacion: notifGG, aviso } = crearNotificacionSilaboGrabadoRevisionGG(proyectoConHistorial);
+          const avisosPrevios = proyectoConHistorial.avisosProyecto || [];
+          proyectoConHistorial.avisosProyecto = [aviso, ...avisosPrevios];
+          setNotificaciones((prevNotifs) => [notifGG, ...prevNotifs]);
+          setNotificacionActivaBanner(notifGG);
+          mostrarToast(`Sílabo oficial grabado (${proyectoConHistorial.codigoProyecto} / SAR: ${proyectoConHistorial.correlativoSAR}). Remitido a Gerencia General.`);
+        } else if (esTrabajoComercial) {
           const notifGen = crearNotificacionProyectoComercializado(proyectoConHistorial);
           setNotificaciones((prevNotifs) => [notifGen, ...prevNotifs]);
           setNotificacionActivaBanner(notifGen);
           mostrarToast(`Estrategia comercial guardada a las ${horaActualFormateada}. Notificación enviada a Gerencia General.`);
-        } else if (proyectoGuardado.seLlevoACabo === 'Listo' && proyectoAnterior.seLlevoACabo !== 'Listo') {
+        } else if (proyectoConHistorial.seLlevoACabo === 'Listo' && proyectoAnterior.seLlevoACabo !== 'Listo') {
           const notifDictamen = crearNotificacionDictamenGeneral(proyectoConHistorial, true);
           setNotificaciones((prevNotifs) => [notifDictamen, ...prevNotifs]);
           setNotificacionActivaBanner(notifDictamen);
-          mostrarToast(`Dictamen 'Listo' registrado a las ${horaActualFormateada}.`);
+          mostrarToast(`Dictamen 'Listo' registrado a las ${horaActualFormateada}. Rebaja POA aplicada.`);
         } else {
           mostrarToast(`Proyecto actualizado a las ${horaActualFormateada}`);
         }
 
         return actualizados;
       } else {
-        // Registro de un nuevo proyecto desde Gerencia Académica / Formulario (Sin barreras de seguridad)
-        const entradaCreacion = crearEntradaHistorialCreacion(proyectoGuardado);
+        // En el nuevo flujo institucional: El Sílabo ES el Proyecto Oficial
+        // Se registra de manera automática con numeración para la Empresa y para la SAR,
+        // y se remite a Gerencia General para su revisión y dictamen de aprobación previa a Comercialización.
+        const entradaCreacion = crearEntradaHistorialCreacion(proyectoConCorrelativos);
+
         const proyectoConHistorial: ProyectoEducativo = {
-          ...proyectoGuardado,
-          fechaCreacion: proyectoGuardado.fechaCreacion || ahora.toISOString(),
-          horaCreacion: proyectoGuardado.horaCreacion || horaActualFormateada,
-          fechaHoraGrabacion: proyectoGuardado.fechaHoraGrabacion || fechaHoraCompleta,
+          ...proyectoConCorrelativos,
+          fechaCreacion: proyectoConCorrelativos.fechaCreacion || ahora.toISOString(),
+          horaCreacion: proyectoConCorrelativos.horaCreacion || horaActualFormateada,
+          fechaHoraGrabacion: proyectoConCorrelativos.fechaHoraGrabacion || fechaHoraCompleta,
           horaUltimaModificacion: horaActualFormateada,
-          etapaFlujo: 'comercializacion',
-          seLlevoACabo: proyectoGuardado.seLlevoACabo || 'Planificado',
-          historialCambios: [entradaCreacion, ...(proyectoGuardado.historialCambios || [])],
+          etapaFlujo: proyectoConCorrelativos.etapaFlujo || 'revision_gerencia_general',
+          seLlevoACabo: proyectoConCorrelativos.seLlevoACabo || 'Planificado',
+          historialCambios: [entradaCreacion, ...(proyectoConCorrelativos.historialCambios || [])],
         };
 
-        // Enviar notificación a Gerencia de Comercialización
-        const notifCom = crearNotificacionNuevoProyecto(proyectoConHistorial);
-        setNotificaciones((prevNotifs) => [notifCom, ...prevNotifs]);
-        setNotificacionActivaBanner(notifCom);
+        // Generar notificación oficial por correo a Gerencia General, Comercialización y Académica
+        const { notificacion: notifGG, aviso } = crearNotificacionSilaboGrabadoRevisionGG(proyectoConHistorial);
+        const avisosPrevios = proyectoConHistorial.avisosProyecto || [];
+        proyectoConHistorial.avisosProyecto = [aviso, ...avisosPrevios];
 
-        mostrarToast(`Proyecto "${proyectoGuardado.nombreProyecto}" grabado exitosamente a las ${horaActualFormateada}. Flujo iniciado.`);
+        setNotificaciones((prevNotifs) => [notifGG, ...prevNotifs]);
+        setNotificacionActivaBanner(notifGG);
+
+        mostrarToast(`Sílabo Oficial "${proyectoConCorrelativos.nombreProyecto}" grabado (Empresa: ${proyectoConCorrelativos.codigoProyecto || 'SIG-ACAD'} | SAR: ${proyectoConCorrelativos.correlativoSAR}). Remitido a Gerencia General.`);
         return [proyectoConHistorial, ...prev];
       }
     });
@@ -628,6 +691,9 @@ export default function App() {
         notificaciones={notificaciones}
         onAbrirNotificaciones={() => setIsNotificationsModalOpen(true)}
         onAbrirGoogleDriveModal={() => setIsDriveModalOpen(true)}
+        onAbrirGoogleSheetsModal={() => setIsGoogleSheetsModalOpen(true)}
+        onAbrirGoogleFormsModal={() => setIsGoogleFormsModalOpen(true)}
+        onAbrirGoogleMeetGerenciasModal={() => setIsGoogleMeetGerenciasModalOpen(true)}
         onAbrirCentroReportes={handleAbrirCentroReportes}
         onAbrirDirectorioGerencias={() => setIsDirectorioGerenciasModalOpen(true)}
         onAbrirTableroPOA={() => setIsPOAModalOpen(true)}
@@ -636,6 +702,7 @@ export default function App() {
         onExportarReporteMesPDF={handleAbrirExportarMes}
         onAbrirWorkflowStatusModal={() => handleAbrirWorkflowModal()}
         onAbrirOperacionRapida={() => setIsGlobalQuickOperationsModalOpen(true)}
+        onVerProyectosAcademicos={handleVerProyectosAcademicos}
       />
 
       {/* Barra Permanente de Auto-Guardado en Google Drive */}
@@ -760,8 +827,11 @@ export default function App() {
             onNuevoProyecto={handleNuevoProyecto}
             onGuardarProyecto={handleGuardarProyecto}
             onEliminarProyecto={handleSolicitarEliminar}
+            onEliminarMultiples={handleEliminarMultiples}
             onAbrirWorkflowStatusModal={handleAbrirWorkflowModal}
             onNotificar={mostrarToast}
+            subPestanaInicial={subPestanaAcademica}
+            onCambiarSubPestana={setSubPestanaAcademica}
           />
         )}
 
@@ -923,6 +993,7 @@ export default function App() {
         gerenciaInicialId={vistaActual}
         proyectos={proyectos}
         moneda={moneda}
+        onAbrirGoogleMeetGerenciasModal={() => setIsGoogleMeetGerenciasModalOpen(true)}
         onSolicitarAutorizacionGG={(accionDesc) => {
           setGgAuthAccionDesc(accionDesc || 'habilitar permisos de modificación para la Gerencia General');
           setPendingActionCallback(null);
@@ -965,6 +1036,36 @@ export default function App() {
         proyectos={proyectos}
         moneda={moneda}
       />
+
+      {/* Modal Integración Oficial Google Sheets API v4 */}
+      {isGoogleSheetsModalOpen && (
+        <GoogleSheetsModal
+          isOpen={isGoogleSheetsModalOpen}
+          onClose={() => setIsGoogleSheetsModalOpen(false)}
+          proyectos={proyectos}
+          moneda={moneda}
+        />
+      )}
+
+      {/* Modal Integración Oficial Google Forms API v1 */}
+      {isGoogleFormsModalOpen && (
+        <GoogleFormsModal
+          isOpen={isGoogleFormsModalOpen}
+          onClose={() => setIsGoogleFormsModalOpen(false)}
+          proyectos={proyectos}
+          moneda={moneda}
+        />
+      )}
+
+      {/* Modal Exclusivo Reunión de Gerencias con Google Meet API v2 */}
+      {isGoogleMeetGerenciasModalOpen && (
+        <GoogleMeetGerenciasModal
+          isOpen={isGoogleMeetGerenciasModalOpen}
+          onClose={() => setIsGoogleMeetGerenciasModalOpen(false)}
+          proyectos={proyectos}
+          onNotificar={(msg) => mostrarToast(msg)}
+        />
+      )}
 
       {/* Modal de Validación y Parámetro de Seguridad Exclusiva de Gerencia General */}
       <GerenciaGeneralAuthModal

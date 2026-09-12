@@ -31,6 +31,7 @@ import { REGLAS_ISV_SERVICIOS, obtenerReglaISVPorServicio, obtenerReglaFiscalPor
 import { generarSiguienteCorrelativo, formatearCorrelativo } from '../utils/correlativoUtils';
 import { sumarDiasHabiles, sumarDiasCalendario, contarDiasHabilesEntreFechas } from '../utils/dateUtils';
 import { CurricularPlanningSection } from './CurricularPlanningSection';
+import { DocenteProfileSection } from './academic/DocenteProfileSection';
 import { obtenerConfiguracionHorasPorNivel } from '../utils/curricularUtils';
 import { CostosFijosAuthModal } from './CostosFijosAuthModal';
 import { 
@@ -80,6 +81,7 @@ export const ModifyProjectScreen: React.FC<ModifyProjectScreenProps> = ({
       fechaCarga?: string;
     } | undefined,
     nombreDocente: '',
+    docenteEspecialidad: '',
     docenteClasificacion: 'Licenciatura' as 'Licenciatura' | 'Ingeniería' | 'Maestría' | 'Doctorado' | 'Posdoctorado' | 'Técnico',
     docenteTelefono: '',
     docenteCorreo: '',
@@ -378,7 +380,7 @@ export const ModifyProjectScreen: React.FC<ModifyProjectScreenProps> = ({
     setGuardadoExitoso(true);
   };
 
-  const margenesPredefinidos = [40, 50, 70, 90, 100];
+  const margenesPredefinidos = [40, 50, 70, 80, 100];
   const esEdicion = selectedId !== 'nuevo' && proyectos.some(p => p.id === selectedId);
 
   return (
@@ -617,6 +619,25 @@ export const ModifyProjectScreen: React.FC<ModifyProjectScreenProps> = ({
                   </div>
                 </div>
 
+                {/* Perfil Docente y Canales de Contacto Directo: Se completa o selecciona primero para propagación automática */}
+                <DocenteProfileSection
+                  nombreDocente={formData.nombreDocente}
+                  docenteClasificacion={formData.docenteClasificacion}
+                  docenteTelefono={formData.docenteTelefono}
+                  docenteCorreo={formData.docenteCorreo}
+                  docenteEspecialidad={formData.docenteEspecialidad}
+                  tarifaHoraDocente={formData.tarifaHoraDocente}
+                  campoConError={null}
+                  idPrefijo="modify-"
+                  moneda={moneda}
+                  onDocenteChange={(cambios) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      ...cambios
+                    }));
+                  }}
+                />
+
                 {/* Planificación Curricular Avanzada: Horas por Tema, Total Horas, Metodología y Documento PDF */}
                 <CurricularPlanningSection
                   cantidadTemas={Number(formData.cantidadTemas) || 4}
@@ -626,6 +647,29 @@ export const ModifyProjectScreen: React.FC<ModifyProjectScreenProps> = ({
                   planificacionPdf={formData.planificacionPdf}
                   tipoProyecto={formData.tipoProyecto}
                   nivelProyecto={formData.nivel}
+                  nombreProyecto={formData.nombreProyecto}
+                  proyectoIdActual={formData.id}
+                  nombreDocente={formData.nombreDocente}
+                  docenteEspecialidad={formData.docenteEspecialidad}
+                  docenteCorreo={formData.docenteCorreo}
+                  docenteTelefono={formData.docenteTelefono}
+                  docenteClasificacion={formData.docenteClasificacion}
+                  tarifaHoraDocente={formData.tarifaHoraDocente}
+                  temasImpartir={formData.temasImpartir}
+                  objetivoGeneral={formData.objetivoGeneral}
+                  horario={formData.horario}
+                  diasClase={formData.diasClase}
+                  onDocenteSeleccionado={(docente) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      nombreDocente: docente.nombre,
+                      docenteEspecialidad: docente.especialidad,
+                      docenteCorreo: docente.email || docente.correo || prev.docenteCorreo,
+                      docenteTelefono: docente.telefono || prev.docenteTelefono,
+                      docenteClasificacion: (docente.clasificacion as any) || (docente.titulo as any) || prev.docenteClasificacion,
+                      tarifaHoraDocente: docente.tarifaHoraSugerida,
+                    }));
+                  }}
                   onNivelChange={(val, configNivel) => {
                     const cfg = configNivel || obtenerConfiguracionHorasPorNivel(val);
                     setFormData(prev => ({
@@ -642,78 +686,6 @@ export const ModifyProjectScreen: React.FC<ModifyProjectScreenProps> = ({
                   onMetodologiaChange={(val) => setFormData(prev => ({ ...prev, metodologia: val }))}
                   onPlanificacionPdfChange={(pdf) => setFormData(prev => ({ ...prev, planificacionPdf: pdf }))}
                 />
-
-                {/* Perfil Docente y Canales de Contacto */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-slate-200/80 pb-1.5">
-                    <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-blue-600" />
-                      Perfil Docente y Canales de Contacto Directo
-                    </span>
-                    <span className="text-[10px] font-semibold text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded">
-                      Cuerpo Académico
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Docente Asignado <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Nombre del docente"
-                        value={formData.nombreDocente}
-                        onChange={(e) => setFormData({ ...formData, nombreDocente: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-medium"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Clasificación Académica <span className="text-rose-500">*</span>
-                      </label>
-                      <select
-                        value={formData.docenteClasificacion}
-                        onChange={(e) => setFormData({ ...formData, docenteClasificacion: e.target.value as any })}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-semibold text-slate-800"
-                      >
-                        <option value="Licenciatura">Licenciatura</option>
-                        <option value="Ingeniería">Ingeniería</option>
-                        <option value="Maestría">Maestría</option>
-                        <option value="Doctorado">Doctorado</option>
-                        <option value="Posdoctorado">Posdoctorado</option>
-                        <option value="Técnico">Técnico</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Número de Contacto <span className="text-slate-400 font-normal">(Tel/WhatsApp)</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ej: +504 9876-5432"
-                        value={formData.docenteTelefono}
-                        onChange={(e) => setFormData({ ...formData, docenteTelefono: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Correo Electrónico
-                      </label>
-                      <input
-                        type="email"
-                        placeholder="docente@summit.hn"
-                        value={formData.docenteCorreo}
-                        onChange={(e) => setFormData({ ...formData, docenteCorreo: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg"
-                      />
-                    </div>
-                  </div>
-                </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
@@ -1015,7 +987,12 @@ export const ModifyProjectScreen: React.FC<ModifyProjectScreenProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-600 mb-1">Tarifa por Hora ({moneda})</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs text-slate-600">Tarifa por Hora ({moneda})</label>
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 rounded inline-flex items-center gap-1">
+                        ⚡ Halado de Perfil Docente
+                      </span>
+                    </div>
                     <input
                       type="number"
                       min="0"
@@ -1025,6 +1002,10 @@ export const ModifyProjectScreen: React.FC<ModifyProjectScreenProps> = ({
                       onChange={(e) => setFormData({ ...formData, tarifaHoraDocente: Number(e.target.value) || 0 })}
                       className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-bold text-slate-900"
                     />
+                    <span className="text-[10px] text-slate-500 flex items-center justify-between mt-0.5">
+                      <span>Docente: {formData.nombreDocente || 'Sin asignar'}</span>
+                      <strong className="text-emerald-700 font-bold font-mono">Honorarios: {formatearMoneda(calculoEnVivo.costoDocenteCalculado, moneda)}</strong>
+                    </span>
                   </div>
                 </div>
 
@@ -1255,21 +1236,11 @@ export const ModifyProjectScreen: React.FC<ModifyProjectScreenProps> = ({
               {/* Selector de Margen */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                  <span>Margen de Ganancia Operativa Deseado:</span>
-                  <span className="text-purple-700 font-bold text-sm">
+                  <span>Margen de Ganancia Operativa Deseado (Pol&iacute;tica Exclusiva):</span>
+                  <span className="text-purple-700 font-mono font-bold text-sm bg-purple-100 px-2.5 py-0.5 rounded-md">
                     {formData.margenGananciaOperativa}%
                   </span>
                 </div>
-
-                <input
-                  type="range"
-                  min="10"
-                  max="150"
-                  step="5"
-                  value={formData.margenGananciaOperativa}
-                  onChange={(e) => setFormData({ ...formData, margenGananciaOperativa: Number(e.target.value) })}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
-                />
 
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {margenesPredefinidos.map((m) => (
@@ -1277,15 +1248,44 @@ export const ModifyProjectScreen: React.FC<ModifyProjectScreenProps> = ({
                       key={m}
                       type="button"
                       onClick={() => setFormData({ ...formData, margenGananciaOperativa: m })}
-                      className={`px-2.5 py-1 text-xs rounded-md font-semibold transition-colors ${
+                      className={`px-3 py-1.5 text-xs rounded-lg font-bold transition-all cursor-pointer ${
                         formData.margenGananciaOperativa === m
-                          ? 'bg-purple-600 text-white'
+                          ? 'bg-purple-600 text-white shadow-xs ring-2 ring-purple-400/40'
                           : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                       }`}
                     >
                       {m}%
                     </button>
                   ))}
+                </div>
+
+                <div className="pt-1">
+                  <input
+                    type="range"
+                    min={0}
+                    max={margenesPredefinidos.length - 1}
+                    step={1}
+                    value={(() => {
+                      const val = Number(formData.margenGananciaOperativa) || 40;
+                      const idx = margenesPredefinidos.indexOf(val);
+                      return idx !== -1 ? idx : 0;
+                    })()}
+                    onChange={(e) => {
+                      const idx = Number(e.target.value);
+                      setFormData({ ...formData, margenGananciaOperativa: margenesPredefinidos[idx] });
+                    }}
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-0.5 px-0.5">
+                    {margenesPredefinidos.map((m) => (
+                      <span 
+                        key={m} 
+                        className={formData.margenGananciaOperativa === m ? 'text-purple-700 font-black' : ''}
+                      >
+                        {m}%
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
 

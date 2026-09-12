@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda } from '../../types';
 import { emitirAprobacionFinalGerenciaGeneral } from '../../utils/poaMonthlyTrackingUtils';
-import { formatearHNL } from '../../utils/poa2027Data';
+import { formatearHNL } from '../../utils/poa2026Data';
 
 interface ExecutiveFastApprovalBarProps {
   proyectos: ProyectoEducativo[];

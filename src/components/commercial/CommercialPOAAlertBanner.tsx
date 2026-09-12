@@ -18,7 +18,7 @@ import {
   Briefcase
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda } from '../../types';
-import { POA_2027_DATOS, formatearHNL } from '../../utils/poa2027Data';
+import { POA_2026_DATOS, formatearHNL } from '../../utils/poa2026Data';
 import { calcularSeguimientoMensualPOA } from '../../utils/poaMonthlyTrackingUtils';
 
 interface CommercialPOAAlertBannerProps {
@@ -36,11 +36,11 @@ export const CommercialPOAAlertBanner: React.FC<CommercialPOAAlertBannerProps> =
 }) => {
   const [mostrarDetalleTrimestral, setMostrarDetalleTrimestral] = useState(false);
 
-  // Metas anuales extraídas directamente de la Matriz POA 2027
-  const META_ANUAL = POA_2027_DATOS.resumen.metaAnualProyectos; // 124 proyectos
-  const PUNTO_EQUILIBRIO_ANUAL = POA_2027_DATOS.resumen.puntoEquilibrioAnual; // 44 proyectos
-  const PROMEDIO_MES = POA_2027_DATOS.resumen.promedioProyectosMes; // 10.3 proy/mes
-  const META_FACTURACION_ANUAL_HNL = 2779000; // Meta total POA en HNL
+  // Metas cuatrimestrales extraídas de la Matriz POA 2026 (Sep - Dic 2026)
+  const META_ANUAL = POA_2026_DATOS.resumen.metaAnualProyectos;
+  const PUNTO_EQUILIBRIO_ANUAL = POA_2026_DATOS.resumen.puntoEquilibrioAnual;
+  const PROMEDIO_MES = POA_2026_DATOS.resumen.promedioProyectosMes;
+  const META_FACTURACION_ANUAL_HNL = POA_2026_DATOS.resumen.ingresosProyectados;
 
   // Seguimiento mensual con utilidades POA
   const seguimientoMensual = calcularSeguimientoMensualPOA(proyectos, moneda);

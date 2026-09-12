@@ -20,7 +20,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda, VistaPrincipal } from '../../types';
-import { formatearHNL } from '../../utils/poa2027Data';
+import { formatearHNL } from '../../utils/poa2026Data';
 import { emitirAprobacionFinalGerenciaGeneral } from '../../utils/poaMonthlyTrackingUtils';
 import { calcularMetricasProyecto } from '../../utils/calculations';
 

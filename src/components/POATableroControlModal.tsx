@@ -18,7 +18,7 @@ import {
   Printer,
   Calendar
 } from 'lucide-react';
-import { POA_2027_DATOS, formatearHNL } from '../utils/poa2027Data';
+import { POA_2026_DATOS, formatearHNL } from '../utils/poa2026Data';
 import { SummitLogo } from './SummitLogo';
 import { VistaPrincipal, ProyectoEducativo, Moneda } from '../types';
 import { calcularComparativaPOAVsRealidad } from '../utils/poaComparisonUtils';
@@ -42,7 +42,7 @@ export const POATableroControlModal: React.FC<POATableroControlModalProps> = ({
 
   if (!isOpen) return null;
 
-  const { resumen, presupuestosGerencias, flujoTrimestral, kpis } = POA_2027_DATOS;
+  const { resumen, presupuestosGerencias, flujoTrimestral, kpis } = POA_2026_DATOS;
   const comparativa = calcularComparativaPOAVsRealidad(proyectos, moneda);
 
   const exportarCSVMatriz = () => {

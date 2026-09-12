@@ -25,7 +25,10 @@ import {
   Mail,
   Layers,
   Clock,
-  Zap
+  Zap,
+  FileCheck,
+  Video,
+  Lock
 } from 'lucide-react';
 import { Moneda, ProyectoEducativo, VistaPrincipal, NotificacionGerencia } from '../types';
 import { SummitLogo } from './SummitLogo';
@@ -53,6 +56,9 @@ interface HeaderProps {
   notificaciones?: NotificacionGerencia[];
   onAbrirNotificaciones?: () => void;
   onAbrirGoogleDriveModal?: () => void;
+  onAbrirGoogleSheetsModal?: () => void;
+  onAbrirGoogleFormsModal?: () => void;
+  onAbrirGoogleMeetGerenciasModal?: () => void;
   onAbrirCentroReportes?: (gerenciaInicial?: 'Gerencia General' | 'Gerencia Académica' | 'Gerencia de Comercialización' | 'Auditoría Interna' | 'Historial' | 'Visualizador Margenes' | 'Tendencia Docente' | 'Comparador Proyectos' | 'Optimizador Fiscal' | 'Proyección de Crecimiento') => void;
   onAbrirDirectorioGerencias?: () => void;
   onAbrirTableroPOA?: () => void;
@@ -61,6 +67,7 @@ interface HeaderProps {
   isDriveSyncing?: boolean;
   onExportarReporteMesPDF?: (mesKey?: string) => void;
   onAbrirOperacionRapida?: () => void;
+  onVerProyectosAcademicos?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -82,6 +89,9 @@ export const Header: React.FC<HeaderProps> = ({
   notificaciones = [],
   onAbrirNotificaciones,
   onAbrirGoogleDriveModal,
+  onAbrirGoogleSheetsModal,
+  onAbrirGoogleFormsModal,
+  onAbrirGoogleMeetGerenciasModal,
   onAbrirCentroReportes,
   onAbrirDirectorioGerencias,
   onAbrirTableroPOA,
@@ -90,6 +100,7 @@ export const Header: React.FC<HeaderProps> = ({
   isDriveSyncing = false,
   onExportarReporteMesPDF,
   onAbrirOperacionRapida,
+  onVerProyectosAcademicos,
 }) => {
   const noLeidasTotales = notificaciones.filter((n) => !n.leida).length;
   const noLeidasComercial = notificaciones.filter(
@@ -144,21 +155,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Botón Centro de Operación Rápida 1 Clic (Todas las Gerencias) */}
-            {onAbrirOperacionRapida && (
-              <button
-                id="btn-operacion-rapida-global-header"
-                onClick={onAbrirOperacionRapida}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-black text-slate-950 bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-600 rounded-lg transition-all shadow-xs group cursor-pointer border border-amber-500/40 animate-pulse"
-                title="Centro de Operación Rápida • Acciones de 1 Clic en todas las gerencias"
-              >
-                <Zap className="w-3.5 h-3.5 fill-slate-950 text-slate-950 group-hover:scale-110 transition-transform" />
-                <span>1 Clic</span>
-                <span className="hidden sm:inline font-extrabold text-[9px] bg-slate-950 text-amber-300 px-1.5 py-0.2 rounded-full">
-                  Rápido
-                </span>
-              </button>
-            )}
+
 
             {/* Botón Directorio de Correos & Credenciales Oficiales por Gerencia */}
             {onAbrirDirectorioGerencias && (
@@ -287,6 +284,51 @@ export const Header: React.FC<HeaderProps> = ({
                 <Cloud className={`w-3.5 h-3.5 ${isDriveConnected ? 'text-blue-600' : 'text-amber-600'} ${isDriveSyncing ? 'animate-pulse' : ''}`} />
                 <span className="hidden md:inline">Drive</span>
                 <span className={`w-1.5 h-1.5 rounded-full ${isDriveConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              </button>
+            )}
+
+            {/* Botón Acceso Google Sheets API (Exportar Planilla & POA 2026) */}
+            {onAbrirGoogleSheetsModal && (
+              <button
+                id="btn-header-google-sheets"
+                onClick={onAbrirGoogleSheetsModal}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors border shadow-2xs bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                title="Exportar y sincronizar con Google Sheets API (POA 2026)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="hidden md:inline">Sheets</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              </button>
+            )}
+
+            {/* Botón Acceso Google Forms API */}
+            {onAbrirGoogleFormsModal && (
+              <button
+                id="btn-header-google-forms"
+                onClick={onAbrirGoogleFormsModal}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors border shadow-2xs bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100 cursor-pointer"
+                title="Centro de Formularios y Encuestas en Google Forms"
+              >
+                <FileCheck className="w-3.5 h-3.5 text-purple-600" />
+                <span className="hidden md:inline">Forms</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+              </button>
+            )}
+
+            {/* Botón Exclusivo Reunión de Gerencias (Google Meet API) */}
+            {onAbrirGoogleMeetGerenciasModal && (
+              <button
+                id="btn-header-google-meet-gerencias"
+                onClick={onAbrirGoogleMeetGerenciasModal}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg transition-colors border shadow-2xs bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white cursor-pointer"
+                title="Exclusivo para la Reunión de las Gerencias (Google Meet API)"
+              >
+                <Video className="w-3.5 h-3.5 text-white" />
+                <span>Meet Gerencias</span>
+                <span className="text-[9px] bg-emerald-950/60 px-1 py-0.2 rounded font-extrabold text-emerald-200 border border-emerald-400/30 flex items-center gap-0.5">
+                  <Lock className="w-2.5 h-2.5" />
+                  Gerencias
+                </span>
               </button>
             )}
 
@@ -607,6 +649,21 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               )}
             </button>
+
+            {/* Acceso Directo: Proyectos Creados por Gerencia Académica */}
+            {onVerProyectosAcademicos && (
+              <button
+                type="button"
+                id="btn-header-ver-proyectos-academicos"
+                onClick={onVerProyectosAcademicos}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-indigo-50 hover:bg-indigo-100 text-indigo-950 border border-indigo-200 cursor-pointer shadow-2xs hover:scale-[1.02] ml-1"
+                title="Ver y administrar todos los proyectos creados por la Gerencia Académica (con opción de borrado)"
+              >
+                <GraduationCap className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="hidden md:inline">📁 Proyectos G. Académica</span>
+                <span className="md:hidden">Proy. Académicos</span>
+              </button>
+            )}
           </div>
 
           {/* Etiqueta Informativa Institucional */}

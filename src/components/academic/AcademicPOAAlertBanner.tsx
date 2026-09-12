@@ -16,12 +16,12 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { ProyectoEducativo } from '../../types';
-import { POA_2027_DATOS } from '../../utils/poa2027Data';
+import { POA_2026_DATOS } from '../../utils/poa2026Data';
 
 interface AcademicPOAAlertBannerProps {
   totalProyectos: number;
   proyectos?: ProyectoEducativo[];
-  onNuevoProyecto: () => void;
+  onNuevoProyecto?: () => void;
 }
 
 export const AcademicPOAAlertBanner: React.FC<AcademicPOAAlertBannerProps> = ({
@@ -31,10 +31,10 @@ export const AcademicPOAAlertBanner: React.FC<AcademicPOAAlertBannerProps> = ({
 }) => {
   const [mostrarDetalleTrimestral, setMostrarDetalleTrimestral] = useState(false);
 
-  // Metas extraídas directamente de la Matriz POA 2027
-  const META_ANUAL = POA_2027_DATOS.resumen.metaAnualProyectos; // 124 proyectos
-  const PUNTO_EQUILIBRIO_ANUAL = POA_2027_DATOS.resumen.puntoEquilibrioAnual; // 44 proyectos
-  const PROMEDIO_MES = POA_2027_DATOS.resumen.promedioProyectosMes; // 10.3 proy/mes
+  // Metas extraídas directamente de la Matriz POA 2026 (Sep - Dic 2026)
+  const META_ANUAL = POA_2026_DATOS.resumen.metaAnualProyectos;
+  const PUNTO_EQUILIBRIO_ANUAL = POA_2026_DATOS.resumen.puntoEquilibrioAnual;
+  const PROMEDIO_MES = POA_2026_DATOS.resumen.promedioProyectosMes;
 
   // Cálculos automáticos y reactivos
   const proyectosPendientes = Math.max(0, META_ANUAL - totalProyectos);
@@ -157,21 +157,11 @@ export const AcademicPOAAlertBanner: React.FC<AcademicPOAAlertBannerProps> = ({
           </div>
         </div>
 
-        {/* Botón de Acción Directa: Formular y Rebajar Automáticamente */}
+        {/* Control de Desglose Trimestral */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0 self-end lg:self-center">
           <button
-            id="btn-agregar-proyecto-rebajar-poa"
-            onClick={onNuevoProyecto}
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm hover:scale-[1.02] transition-all cursor-pointer border border-emerald-500"
-            title="Formular un nuevo curso para rebajar automáticamente el contador pendiente del POA 2026"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Formular Proyecto (Rebajar -1)</span>
-          </button>
-
-          <button
             onClick={() => setMostrarDetalleTrimestral(!mostrarDetalleTrimestral)}
-            className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+            className="px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
           >
             <span>{mostrarDetalleTrimestral ? 'Ocultar Desglose' : 'Ver Desglose Q1-Q4'}</span>
             {mostrarDetalleTrimestral ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -183,7 +173,7 @@ export const AcademicPOAAlertBanner: React.FC<AcademicPOAAlertBannerProps> = ({
       {/* Grid de Contadores de Cumplimiento (Rebaja Dinámica) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 sm:p-5 pt-0">
         
-        {/* 1. Meta POA 2027 */}
+        {/* 1. Meta POA 2026 */}
         <div className="bg-white/90 p-3 rounded-xl border border-slate-200/80 shadow-2xs">
           <span className="text-[10px] font-bold text-slate-500 uppercase block truncate">Meta Anual POA</span>
           <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 mt-0.5">
@@ -337,14 +327,8 @@ export const AcademicPOAAlertBanner: React.FC<AcademicPOAAlertBannerProps> = ({
 
           <div className="mt-3 p-2.5 rounded-lg bg-blue-50/80 border border-blue-200 text-xs text-blue-900 flex items-center justify-between">
             <span>
-              ℹ️ Cada vez que formules un nuevo proyecto, el sistema lo descuenta en tiempo real de la meta anual y del trimestre correspondiente.
+              ℹ️ Cada nuevo proyecto oficializado mediante Sílabo Oficial o registrado desde el Tablero Principal descuenta en tiempo real la meta anual del POA.
             </span>
-            <button
-              onClick={onNuevoProyecto}
-              className="text-xs font-bold text-blue-700 hover:text-blue-900 underline shrink-0 ml-2"
-            >
-              Formular Proyecto Ahora
-            </button>
           </div>
         </div>
       )}

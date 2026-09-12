@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda } from '../../types';
 import { formatearMoneda, calcularMetricasProyecto } from '../../utils/calculations';
-import { formatearHNL } from '../../utils/poa2027Data';
+import { formatearHNL } from '../../utils/poa2026Data';
 
 export interface QuickCurricularTemplatesBarProps {
   proyectos?: ProyectoEducativo[];

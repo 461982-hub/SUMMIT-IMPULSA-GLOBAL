@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   Save, 
@@ -24,7 +24,15 @@ import {
   XCircle,
   ShieldAlert,
   ArrowRight,
-  AlertTriangle
+  AlertTriangle,
+  GraduationCap,
+  Scale,
+  Edit3,
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda, TipoProyecto, NivelProyecto, MetodoVenta, EstadoProyecto, TipoServicioFiscal } from '../types';
 import { calcularMetricasProyecto, formatearMoneda } from '../utils/calculations';
@@ -32,8 +40,16 @@ import { REGLAS_ISV_SERVICIOS, obtenerReglaISVPorServicio, obtenerReglaFiscalPor
 import { generarSiguienteCorrelativo, formatearCorrelativo } from '../utils/correlativoUtils';
 import { sumarDiasHabiles, sumarDiasCalendario, contarDiasHabilesEntreFechas, formatearFechaCorta } from '../utils/dateUtils';
 import { CurricularPlanningSection } from './CurricularPlanningSection';
+import { DocenteProfileSection } from './academic/DocenteProfileSection';
 import { obtenerConfiguracionHorasPorNivel } from '../utils/curricularUtils';
 import { CostosFijosAuthModal } from './CostosFijosAuthModal';
+import { 
+  obtenerTodosLosSilabos, 
+  buscarSilabo, 
+  extraerDatosPedagogicosDeSilabo, 
+  SilaboOficial 
+} from '../utils/silaboCatalogUtils';
+import { DocenteBanco, obtenerBancoDocentes } from '../utils/docenteDirectoryUtils';
 import { 
   CostoOperativoBannerPreventivo, 
   CostoOperativoModalPreventivo, 
@@ -45,7 +61,7 @@ import {
   convertirAHNL, 
   obtenerTrimestrePorMes 
 } from '../utils/poaMonthlyTrackingUtils';
-import { formatearHNL } from '../utils/poa2027Data';
+import { formatearHNL } from '../utils/poa2026Data';
 import { formatearEtiquetaMes } from '../utils/monthUtils';
 
 interface ProjectFormModalProps {
@@ -85,6 +101,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       fechaCarga?: string;
     } | undefined,
     nombreDocente: '',
+    docenteEspecialidad: '',
     docenteClasificacion: 'Licenciatura' as 'Licenciatura' | 'Ingeniería' | 'Maestría' | 'Doctorado' | 'Posdoctorado' | 'Técnico',
     docenteTelefono: '',
     docenteCorreo: '',
@@ -122,7 +139,69 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
     fechaAprobacionGerenciaGeneral: '',
     aprobadoPorGerenciaGeneral: 'Dr. Walter Pedroza - Gerencia General',
     observacionesAprobacionGeneral: '',
+    silaboOrigenId: '',
+    codigoSilaboOrigen: '',
+    nombreSilaboOrigen: '',
   });
+
+  // Catálogo unificado de sílabos oficiales y registrados
+  const silabosDisponibles = useMemo(() => {
+    return obtenerTodosLosSilabos(proyectosExistentes);
+  }, [proyectosExistentes]);
+
+  const [silaboSeleccionadoId, setSilaboSeleccionadoId] = useState<string>('');
+  const [mostrarEdicionManualPedagogica, setMostrarEdicionManualPedagogica] = useState(false);
+  const [mostrarVistaPreviaSilabo, setMostrarVistaPreviaSilabo] = useState(false);
+
+  const silaboActual = useMemo(() => {
+    if (!silaboSeleccionadoId) return null;
+    return silabosDisponibles.find((s) => s.id === silaboSeleccionadoId) || null;
+  }, [silaboSeleccionadoId, silabosDisponibles]);
+
+  const handleSeleccionarSilabo = (id: string) => {
+    setSilaboSeleccionadoId(id);
+    if (!id) return;
+    const silabo = buscarSilabo(id, proyectosExistentes);
+    if (silabo) {
+      const datos = extraerDatosPedagogicosDeSilabo(silabo);
+      const reglaFiscal = obtenerReglaFiscalPorTipoProyecto(datos.tipoProyecto);
+      
+      // REGLA INSTITUCIONAL OBLIGATORIA: Todos los cursos básicos son de 12 horas automáticas
+      const esCursoBasico = datos.nivel === 'Básico' ||
+        /b[áa]sico/i.test(datos.nombreProyecto || '') ||
+        /curso.*b[áa]sico/i.test(datos.nombreProyecto || '') ||
+        (datos.tipoProyecto === 'Curso' && !datos.nivel);
+
+      const horasFinales = esCursoBasico ? 12 : datos.horasClase;
+      const temasFinales = esCursoBasico ? 4 : datos.cantidadTemas;
+      const horasTemaFinales = esCursoBasico ? 3 : datos.horasClasePorTema;
+      const nivelFinal: NivelProyecto = esCursoBasico ? 'Básico' : (datos.nivel || 'Básico');
+
+      setFormData((prev) => ({
+        ...prev,
+        ...datos,
+        nivel: nivelFinal,
+        tipoProyecto: datos.tipoProyecto,
+        servicioFiscal: reglaFiscal.servicio as TipoServicioFiscal,
+        aplicaISV: reglaFiscal.gravaISV,
+        tarifaHoraDocente: datos.tarifaHoraDocente || prev.tarifaHoraDocente,
+        cantidadTemas: temasFinales,
+        horasClasePorTema: horasTemaFinales,
+        horasClase: horasFinales,
+        costoDocenteManual: prev.usarTarifaHora ? prev.costoDocenteManual : (horasFinales * (Number(datos.tarifaHoraDocente) || 200)),
+      }));
+      if (
+        campoConError === 'select-silabo-oficial' || 
+        campoConError === 'input-nombre-proyecto' || 
+        campoConError === 'input-objetivo' || 
+        campoConError === 'input-temas-impartir' || 
+        campoConError === 'input-docente'
+      ) {
+        setCampoConError(null);
+        setAlertaSeguridad(null);
+      }
+    }
+  };
 
   // Modo de visualización según gerencia de origen (flujo de trabajo y separación de funciones)
   const [modoFormulario, setModoFormulario] = useState<'academica' | 'comercial' | 'integral'>(() => {
@@ -218,6 +297,13 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       const numCorrelativo = proyectoAEditar.numeroCorrelativo || parseInt(proyectoAEditar.id, 10) || 1;
       const padNum = String(numCorrelativo).padStart(3, '0');
 
+      const silaboEncontrado = silabosDisponibles.find(
+        (s) => s.id === proyectoAEditar.silaboOrigenId ||
+               s.codigoPrograma === proyectoAEditar.codigoSilaboOrigen ||
+               s.nombreProyecto.trim().toLowerCase() === proyectoAEditar.nombreProyecto?.trim().toLowerCase()
+      );
+      setSilaboSeleccionadoId(silaboEncontrado?.id || proyectoAEditar.silaboOrigenId || '');
+
       setFormData({
         id: proyectoAEditar.id,
         numeroCorrelativo: numCorrelativo,
@@ -268,28 +354,50 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
         fechaAprobacionGerenciaGeneral: proyectoAEditar.fechaAprobacionGerenciaGeneral || (proyectoAEditar.aprobacionFinalGerenciaGeneral ? new Date().toISOString().slice(0, 10) : ''),
         aprobadoPorGerenciaGeneral: proyectoAEditar.aprobadoPorGerenciaGeneral || 'Dr. Walter Pedroza - Gerencia General',
         observacionesAprobacionGeneral: proyectoAEditar.observacionesAprobacionGeneral || '',
+        silaboOrigenId: proyectoAEditar.silaboOrigenId || silaboEncontrado?.id || '',
+        codigoSilaboOrigen: proyectoAEditar.codigoSilaboOrigen || silaboEncontrado?.codigoPrograma || '',
+        nombreSilaboOrigen: proyectoAEditar.nombreSilaboOrigen || silaboEncontrado?.nombreProyecto || '',
       });
       setCostosFijosAutorizados(false);
     } else {
       // Cálculo automático del siguiente correlativo secuencial
       const siguiente = generarSiguienteCorrelativo(proyectosExistentes, 'Capacitación profesional / Mentoría ejecutiva', 2026);
       const hoyISO = new Date().toISOString().slice(0, 10);
+      const primerSilabo = silabosDisponibles[0];
+      const datosPed = primerSilabo ? extraerDatosPedagogicosDeSilabo(primerSilabo) : null;
+      setSilaboSeleccionadoId(primerSilabo?.id || '');
+
+      const bancoDocentes = obtenerBancoDocentes();
+      const docentePorDefecto = bancoDocentes.length > 0 ? bancoDocentes[0] : null;
 
       setFormData({
         id: Date.now().toString(),
         numeroCorrelativo: siguiente.numeroCorrelativo,
         codigoPrograma: siguiente.codigoPrograma,
         codigoFiscalSAR: siguiente.codigoFiscalSAR,
-        nombreProyecto: '',
-        objetivoGeneral: '',
-        nombreDocente: '',
+        nombreProyecto: datosPed?.nombreProyecto || '',
+        objetivoGeneral: datosPed?.objetivoGeneral || '',
+        temasImpartir: datosPed?.temasImpartir || '',
+        cantidadTemas: datosPed?.cantidadTemas || 4,
+        horasClasePorTema: datosPed?.horasClasePorTema || 3,
+        horasClase: datosPed?.horasClase || 12,
+        metodologia: datosPed?.metodologia || 'Aprendizaje Basado en Proyectos (ABP) & Casos Reales',
+        planificacionPdf: undefined,
+        nombreDocente: datosPed?.nombreDocente || docentePorDefecto?.nombre || '',
+        docenteEspecialidad: datosPed?.docenteEspecialidad || docentePorDefecto?.especialidad || '',
+        docenteClasificacion: (datosPed?.docenteClasificacion as any) || (docentePorDefecto?.clasificacion as any) || 'Licenciatura',
+        docenteTelefono: datosPed?.docenteTelefono || docentePorDefecto?.telefono || '',
+        docenteCorreo: datosPed?.docenteCorreo || docentePorDefecto?.email || docentePorDefecto?.correo || '',
+        tarifaHoraDocente: datosPed?.tarifaHoraDocente || docentePorDefecto?.tarifaHoraSugerida || 200,
+        costoHoraDocente: datosPed?.tarifaHoraDocente || docentePorDefecto?.tarifaHoraSugerida || 200,
         seccion: 'Sección A',
-        horario: '', // En blanco para rellenar manualmente
-        diasClase: '', // En blanco para rellenar manualmente
-        tipoProyecto: 'Capacitación profesional / Mentoría ejecutiva',
-        nivel: 'Básico',
-        servicioFiscal: 'Capacitación profesional / Mentoría ejecutiva',
-        aplicaISV: true,
+        horario: '06:00 PM - 08:00 PM',
+        diasClase: 'Lunes, Miércoles y Viernes',
+        calificacionCurso: 5.0,
+        tipoProyecto: datosPed?.tipoProyecto || 'Capacitación profesional / Mentoría ejecutiva',
+        nivel: (datosPed?.nivel || 'Básico') as NivelProyecto,
+        servicioFiscal: (datosPed?.servicioFiscal as any) || 'Capacitación profesional / Mentoría ejecutiva',
+        aplicaISV: datosPed?.aplicaISV !== undefined ? datosPed.aplicaISV : true,
         fechaElaboracion: hoyISO,
         diasHabilesVenta: 20,
         decisionPlazoVenta: undefined,
@@ -299,10 +407,6 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
         tiempoVentaCumplido: false,
         fechaProgramacion: hoyISO,
         fechaVenta: sumarDiasHabiles(hoyISO, 20),
-        horasClase: 12,
-        cantidadTemas: 4,
-        horasClasePorTema: 3,
-        tarifaHoraDocente: 200,
         costoDocenteManual: 0,
         usarTarifaHora: true,
         costoZoom: 300, // Fijado por política
@@ -314,10 +418,17 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
         metodoVenta: 'Redes sociales',
         seLlevoACabo: 'Planificado',
         observaciones: '',
+        aprobacionFinalGerenciaGeneral: false,
+        fechaAprobacionGerenciaGeneral: '',
+        aprobadoPorGerenciaGeneral: 'Dr. Walter Pedroza - Gerencia General',
+        observacionesAprobacionGeneral: '',
+        silaboOrigenId: primerSilabo?.id || '',
+        codigoSilaboOrigen: primerSilabo?.codigoPrograma || '',
+        nombreSilaboOrigen: primerSilabo?.nombreProyecto || '',
       });
       setCostosFijosAutorizados(false);
     }
-  }, [proyectoAEditar, isOpen, proyectosExistentes]);
+  }, [proyectoAEditar, isOpen, proyectosExistentes, silabosDisponibles]);
 
   const handleRestablecerCostosEstandar = () => {
     setFormData({
@@ -357,9 +468,9 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
     observaciones: formData.observaciones,
   });
 
-  // Métricas para verificación de POA 2027 y Rebaja Mensual
-  const mesNumProyecto = formData.fechaProgramacion ? (parseInt(formData.fechaProgramacion.slice(5, 7), 10) || 1) : 1;
-  const mesKeyProyecto = formData.fechaProgramacion ? formData.fechaProgramacion.slice(0, 7) : '2026-08';
+  // Métricas para verificación de POA 2026 y Rebaja Mensual
+  const mesNumProyecto = formData.fechaProgramacion ? (parseInt(formData.fechaProgramacion.slice(5, 7), 10) || 9) : 9;
+  const mesKeyProyecto = formData.fechaProgramacion ? formData.fechaProgramacion.slice(0, 7) : '2026-09';
   const metaMesPOA = obtenerMetaFacturacionMensualPOA(mesNumProyecto);
   const trimestreMesPOA = obtenerTrimestrePorMes(mesNumProyecto);
   const impactoRebajaHNL = convertirAHNL(calculoEnVivo.ingresoRealTotal || 0, moneda);
@@ -447,11 +558,19 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
         textoAutoRellenar: 'Regenerar Correlativo Fiscal SAR'
       },
       {
-        idElemento: 'input-nombre-proyecto',
-        nombreCampo: 'Nombre del Proyecto / Curso',
-        seccion: '1. Datos del Programa',
+        idElemento: 'select-silabo-oficial',
+        nombreCampo: 'Selección de Sílabo Oficial Base',
+        seccion: '1. Estructura Pedagógica',
         esValido: () => Boolean(formData.nombreProyecto && formData.nombreProyecto.trim().length >= 3),
-        mensaje: 'Debe ingresar el nombre oficial del curso o programa formativo (mínimo 3 caracteres).'
+        mensaje: silabosDisponibles.length > 0 
+          ? 'Seleccione un sílabo creado en Gerencia Académica o ingrese el nombre del proyecto educativo.' 
+          : 'Ingrese el nombre del proyecto educativo.',
+        autoRellenar: () => {
+          if (silabosDisponibles[0]) {
+            handleSeleccionarSilabo(silabosDisponibles[0].id);
+          }
+        },
+        textoAutoRellenar: 'Vincular Sílabo Oficial Creado'
       },
       {
         idElemento: 'input-objetivo',
@@ -802,6 +921,11 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       metodoVenta: metodoFinal,
       seLlevoACabo: estadoFinal,
       observaciones: formData.observaciones.trim(),
+      silaboOrigenId: formData.silaboOrigenId || undefined,
+      codigoSilaboOrigen: formData.codigoSilaboOrigen || undefined,
+      nombreSilaboOrigen: formData.nombreSilaboOrigen || undefined,
+      esSilaboBase: false,
+      tipoRegistro: 'curso_proyecto',
       aprobacionFinalGerenciaGeneral: formData.aprobacionFinalGerenciaGeneral,
       fechaAprobacionGerenciaGeneral: formData.aprobacionFinalGerenciaGeneral ? (formData.fechaAprobacionGerenciaGeneral || new Date().toISOString().slice(0, 10)) : undefined,
       aprobadoPorGerenciaGeneral: formData.aprobacionFinalGerenciaGeneral ? (formData.aprobadoPorGerenciaGeneral || 'Dr. Walter Pedroza - Gerencia General') : undefined,
@@ -833,7 +957,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
     onClose();
   };
 
-  const margenesPredefinidos = [40, 50, 70, 90, 100];
+  const margenesPredefinidos = [40, 50, 70, 80, 100];
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
@@ -1162,309 +1286,458 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
             {/* Columna Izquierda: Entradas de Datos (7 cols) */}
             <div className="lg:col-span-7 space-y-5">
               
-              {/* Sección 1: Información General */}
-              <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3.5">
-                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>1. Datos del Programa</span>
+              {/* Sección 1: Estructura Pedagógica (Cargada Automáticamente desde Sílabo Oficial) */}
+              <div className="bg-gradient-to-b from-indigo-50/50 via-slate-50/70 to-white p-4 rounded-xl border border-indigo-200/90 shadow-2xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-200/70 pb-2.5">
+                  <div className="flex items-center gap-2 text-xs font-black text-indigo-950 uppercase tracking-wider">
+                    <GraduationCap className="w-4 h-4 text-indigo-700" />
+                    <span>1. Estructura Pedagógica del Programa</span>
                   </div>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-md">
-                    Llenado por Gerencia Académica
-                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Auto-Cargado desde Sílabo
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-md">
+                      Gerencia Académica
+                    </span>
+                  </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-semibold text-slate-700">
-                        Nombre del Proyecto / Curso <span className="text-rose-500">*</span>
-                      </label>
-                      {campoConError === 'input-nombre-proyecto' && (
-                        <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
-                          Campo Obligatorio
-                        </span>
-                      )}
-                    </div>
-                    <input
-                      id="input-nombre-proyecto"
-                      type="text"
-                      required
-                      placeholder="Ej: Inglés Básico, Taller de Liderazgo, Excel Financiero..."
-                      value={formData.nombreProyecto}
-                      onChange={(e) => {
-                        setFormData({ ...formData, nombreProyecto: e.target.value });
-                        if (campoConError === 'input-nombre-proyecto') setCampoConError(null);
-                      }}
-                      className={`w-full px-3 py-2 text-xs bg-white border rounded-lg transition-all ${
-                        campoConError === 'input-nombre-proyecto'
-                          ? 'border-rose-500 ring-2 ring-rose-400 bg-rose-50/50 text-rose-950 font-bold'
-                          : 'border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500'
-                      }`}
-                    />
+                {/* SELECTOR OFICIAL DE SÍLABO BASE */}
+                <div className={`p-3.5 rounded-xl border-2 transition-all space-y-2.5 ${
+                  campoConError === 'select-silabo-oficial'
+                    ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-400'
+                    : 'bg-white border-indigo-300 shadow-2xs'
+                }`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <label htmlFor="select-silabo-oficial" className="block text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                      <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <span>Seleccionar Sílabo Oficial Acreditado *</span>
+                    </label>
+                    <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 w-fit">
+                      Estructura Básica Curricular Aprobada
+                    </span>
                   </div>
+                  
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Seleccione el sílabo curricular institucional. La estructura pedagógica (nombre, objetivo, módulos temáticos, horas totales y perfil docente) se cargará y vinculará de forma <strong>100% automática</strong>.
+                  </p>
 
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-semibold text-slate-700">
-                        Objetivo General <span className="text-rose-500">*</span>
-                      </label>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="relative flex-1">
+                      <select
+                        id="select-silabo-oficial"
+                        value={silaboSeleccionadoId}
+                        onChange={(e) => handleSeleccionarSilabo(e.target.value)}
+                        className={`w-full pl-3 pr-8 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                          campoConError === 'select-silabo-oficial'
+                            ? 'bg-rose-50 text-rose-950 border-2 border-rose-500 ring-2 ring-rose-300'
+                            : 'bg-slate-50 hover:bg-white text-slate-900 border-2 border-indigo-400 focus:ring-2 focus:ring-indigo-500'
+                        }`}
+                      >
+                        <option value="">
+                          {silabosDisponibles.length === 0
+                            ? '-- No hay sílabos creados aún (Crear en Sílabos Oficiales) --'
+                            : '-- Seleccionar Sílabo Creado en Gerencia Académica --'}
+                        </option>
+                        {silabosDisponibles.map((silabo) => (
+                          <option key={silabo.id} value={silabo.id}>
+                            [{silabo.codigoPrograma}] {silabo.nombreProyecto} • {silabo.horasClase}h ({silabo.nivel}) - {silabo.nombreDocente || 'Docente'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {silaboActual && (
                       <button
                         type="button"
-                        onClick={() => {
-                          const objSugerido = formData.nombreProyecto.trim()
-                            ? `Desarrollar en los participantes las competencias teórico-prácticas fundamentales de ${formData.nombreProyecto.trim()}, facilitando la aplicación efectiva de metodologías clave en su desempeño profesional con altos estándares de calidad.`
-                            : 'Capacitar a los estudiantes en las competencias técnicas y metodológicas fundamentales del programa formativo.';
-                          setFormData({ ...formData, objetivoGeneral: objSugerido });
-                          if (campoConError === 'input-objetivo') setCampoConError(null);
-                        }}
-                        className="text-[10px] text-emerald-700 hover:text-emerald-900 underline font-medium"
+                        onClick={() => setMostrarVistaPreviaSilabo(!mostrarVistaPreviaSilabo)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-800 bg-indigo-100 hover:bg-indigo-200 border border-indigo-300 rounded-lg transition-all shrink-0 cursor-pointer"
                       >
-                        + Generar objetivo sugerido
+                        <FileText className="w-3.5 h-3.5" />
+                        {mostrarVistaPreviaSilabo ? 'Ocultar Ficha' : 'Ver Sílabo Completo'}
                       </button>
-                    </div>
-                    <textarea
-                      id="input-objetivo"
-                      rows={2}
-                      placeholder="Objetivo principal del programa educativo para el estudiante..."
-                      value={formData.objetivoGeneral}
-                      onChange={(e) => {
-                        setFormData({ ...formData, objetivoGeneral: e.target.value });
-                        if (campoConError === 'input-objetivo') setCampoConError(null);
-                      }}
-                      className={`w-full px-3 py-1.5 text-xs bg-white border rounded-lg resize-none transition-all ${
-                        campoConError === 'input-objetivo'
-                          ? 'border-rose-500 ring-2 ring-rose-400 bg-rose-50/50 text-rose-950 font-medium'
-                          : 'border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500'
-                      }`}
-                    />
+                    )}
                   </div>
 
-                  {/* Temas a Impartir (Ubicado debajo del Objetivo General) */}
-                  <div className={`p-3 rounded-xl border space-y-1.5 transition-all ${
-                    campoConError === 'input-temas-impartir'
-                      ? 'bg-rose-50/80 border-rose-400 ring-2 ring-rose-400'
-                      : 'bg-emerald-50/60 border-emerald-200/80'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <label className="block text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-emerald-700" />
-                        Temas a Impartir (Contenido / Syllabus Curricular) <span className="text-rose-500">*</span>
-                      </label>
-                      <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
-                        Estructura Académica
+                  {silabosDisponibles.length === 0 && (
+                    <div className="bg-amber-50/90 border border-amber-300 rounded-lg p-2.5 text-xs text-amber-900 flex items-start gap-2 mt-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-amber-950 text-[11px]">
+                          No hay sílabos guardados en el sistema
+                        </p>
+                        <p className="text-[10px] text-amber-800 leading-relaxed">
+                          Solo aparecerán aquí los sílabos creados en la sección <strong>Planes de Estudio (Syllabus) & PDF</strong>. Puede redactar los datos del proyecto manualmente aquí abajo, o crear primero el sílabo y docente en Gerencia Académica para cargarlos con un solo clic.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* VISTA PREVIA DETALLADA DEL SÍLABO EXPANDIBLE */}
+                {mostrarVistaPreviaSilabo && silaboActual && (
+                  <div className="bg-indigo-950 text-indigo-50 p-4 rounded-xl shadow-inner space-y-3 text-xs border border-indigo-800 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between border-b border-indigo-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="w-4 h-4 text-indigo-300" />
+                        <span className="font-bold uppercase tracking-wider text-white">
+                          Ficha Curricular Oficial: {silaboActual.codigoPrograma}
+                        </span>
+                      </div>
+                      <span className="bg-indigo-900 text-indigo-200 text-[10px] font-mono px-2 py-0.5 rounded border border-indigo-700">
+                        Acreditado por Gerencia Académica
                       </span>
                     </div>
-                    <textarea
-                      id="input-temas-impartir"
-                      rows={3}
-                      placeholder="Tema 1: Fundamentos y conceptos clave&#10;Tema 2: Herramientas prácticas y metodologías&#10;Tema 3: Casos de estudio y aplicación real&#10;Tema 4: Proyecto final y evaluación de competencias"
-                      value={formData.temasImpartir}
-                      onChange={(e) => {
-                        setFormData({ ...formData, temasImpartir: e.target.value });
-                        if (campoConError === 'input-temas-impartir') setCampoConError(null);
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                      <div>
+                        <span className="text-indigo-300 font-bold block mb-0.5">Fundamentación y Enfoque:</span>
+                        <p className="text-indigo-100/90 leading-relaxed bg-indigo-900/60 p-2 rounded border border-indigo-800/80">
+                          {silaboActual.fundamentacion || 'Programa curricular diseñado para el fortalecimiento de capacidades técnicas y metodológicas aplicadas.'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-indigo-300 font-bold block mb-0.5">Competencias Generales a Desarrollar:</span>
+                        <ul className="list-disc list-inside text-indigo-100/90 space-y-0.5 bg-indigo-900/60 p-2 rounded border border-indigo-800/80">
+                          {silaboActual.competenciasGenerales && silaboActual.competenciasGenerales.length > 0 ? (
+                            silaboActual.competenciasGenerales.map((comp, idx) => (
+                              <li key={idx}>{comp}</li>
+                            ))
+                          ) : (
+                            <li>Aplicación práctica de metodologías profesionales y resolución de casos.</li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+
+                    {silaboActual.sistemaEvaluacion && (
+                      <div className="border-t border-indigo-800/80 pt-2 flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                        <span className="text-indigo-300 font-bold">Rúbrica de Evaluación Institucional:</span>
+                        <div className="flex items-center gap-2">
+                          <span className="bg-indigo-900 px-2 py-0.5 rounded border border-indigo-800">Casos: {silaboActual.sistemaEvaluacion.porcentajeCasosPracticos}%</span>
+                          <span className="bg-indigo-900 px-2 py-0.5 rounded border border-indigo-800">Proyecto: {silaboActual.sistemaEvaluacion.porcentajeProyectoIntegrador}%</span>
+                          <span className="bg-indigo-900 px-2 py-0.5 rounded border border-indigo-800">Talleres: {silaboActual.sistemaEvaluacion.porcentajeTalleresEjercicios}%</span>
+                          <span className="bg-indigo-900 px-2 py-0.5 rounded border border-indigo-800">Participación: {silaboActual.sistemaEvaluacion.porcentajeParticipacion}%</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TARJETA DE ESTRUCTURA PEDAGÓGICA VINCULADA Y RELLENADA AUTOMÁTICAMENTE */}
+                {formData.nombreProyecto ? (
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs space-y-0">
+                    {/* Barra Superior con Check y Código */}
+                    <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 px-3.5 py-2 text-white flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />
+                        <span className="text-xs font-black uppercase tracking-wide">
+                          Estructura Pedagógica Oficial Vinculada
+                        </span>
+                        {formData.codigoSilaboOrigen && (
+                          <span className="text-[10px] font-mono font-bold bg-white/20 px-2 py-0.5 rounded border border-white/30">
+                            {formData.codigoSilaboOrigen}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold bg-black/25 px-2 py-0.5 rounded">
+                          Nivel: {formData.nivel}
+                        </span>
+                        <span className="text-[10px] font-bold bg-black/25 px-2 py-0.5 rounded">
+                          {formData.horasClase} Horas Totales
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Resumen pedagógico claro y legible */}
+                    <div className="p-3.5 space-y-3 bg-slate-50/50">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-0.5">
+                          Nombre del Programa / Curso Oficial:
+                        </span>
+                        <p className="text-sm font-black text-slate-900 leading-tight">
+                          {formData.nombreProyecto}
+                        </p>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-0.5">
+                          Objetivo General Pedagógico:
+                        </span>
+                        <p className="text-xs text-slate-700 bg-white p-2.5 rounded-lg border border-slate-200 leading-relaxed font-medium">
+                          {formData.objetivoGeneral || 'Objetivo formativo institucional establecido por Gerencia Académica.'}
+                        </p>
+                      </div>
+
+                      {/* Temas / Módulos del Sílabo */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-900 flex items-center gap-1">
+                            <FileText className="w-3 h-3 text-emerald-600" />
+                            Contenido Curricular / Módulos Impartidos:
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
+                            {formData.cantidadTemas} Módulos • {formData.horasClasePorTema}h por módulo
+                          </span>
+                        </div>
+                        <div className="bg-white p-2.5 rounded-lg border border-emerald-200 text-xs font-mono text-slate-800 whitespace-pre-line leading-relaxed max-h-36 overflow-y-auto">
+                          {formData.temasImpartir || 'Contenido curricular oficial.'}
+                        </div>
+                      </div>
+
+                      {/* Docente y Metodología */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                        <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-indigo-900 block mb-0.5">
+                            Docente Designado en Sílabo:
+                          </span>
+                          <p className="text-xs font-bold text-slate-900">
+                            {formData.nombreDocente || 'Docente asignado por Gerencia Académica'}
+                          </p>
+                          <p className="text-[10px] text-slate-600">
+                            {formData.docenteClasificacion} • {formData.docenteEspecialidad || 'Especialista Curricular'}
+                          </p>
+                          {formData.docenteCorreo && (
+                            <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate">
+                              {formData.docenteCorreo} {formData.docenteTelefono ? `• ${formData.docenteTelefono}` : ''}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 block mb-0.5">
+                            Metodología de Aprendizaje:
+                          </span>
+                          <p className="text-xs font-semibold text-slate-800 leading-snug">
+                            {formData.metodologia || 'Aprendizaje Basado en Proyectos (ABP) & Casos Reales'}
+                          </p>
+                          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-indigo-700 font-medium">
+                            <Sparkles className="w-3 h-3 text-indigo-500 shrink-0" />
+                            <span>Validado por Dirección de Gerencia Académica</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Botón discreto para permitir excepciones pedagógicas manuales */}
+                      <div className="pt-1 flex items-center justify-between border-t border-slate-200 text-[11px]">
+                        <span className="text-slate-500 italic text-[10px]">
+                          Estructura protegida y estandarizada. No requiere tipeo manual.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setMostrarEdicionManualPedagogica(!mostrarEdicionManualPedagogica)}
+                          className="text-indigo-700 hover:text-indigo-900 font-semibold underline text-[10px] flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          {mostrarEdicionManualPedagogica ? 'Ocultar campos manuales' : 'Ajustar datos pedagógicos manualmente (excepción)'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-center gap-2 text-xs text-amber-900">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Por favor seleccione un Sílabo Oficial para auto-completar toda la estructura pedagógica requerida.</span>
+                  </div>
+                )}
+
+                {/* CAMPOS MANUALES DE EMERGENCIA (Colapsados por defecto) */}
+                {mostrarEdicionManualPedagogica && (
+                  <div className="bg-slate-100/90 p-3.5 rounded-xl border border-slate-300 space-y-3 transition-all animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-800 border-b border-slate-300 pb-1.5">
+                      <span>Ajustes Curriculares Manuales (Excepción Académica)</span>
+                      <span className="text-[10px] text-amber-800 bg-amber-100 px-2 py-0.5 rounded font-semibold">
+                        Solo para casos especiales
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Nombre del Proyecto / Curso
+                      </label>
+                      <input
+                        id="input-nombre-proyecto"
+                        type="text"
+                        value={formData.nombreProyecto}
+                        onChange={(e) => setFormData({ ...formData, nombreProyecto: e.target.value })}
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Objetivo General
+                      </label>
+                      <textarea
+                        id="input-objetivo"
+                        rows={2}
+                        value={formData.objetivoGeneral}
+                        onChange={(e) => setFormData({ ...formData, objetivoGeneral: e.target.value })}
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Temas a Impartir (Contenido Curricular)
+                      </label>
+                      <textarea
+                        id="input-temas-impartir"
+                        rows={3}
+                        value={formData.temasImpartir}
+                        onChange={(e) => setFormData({ ...formData, temasImpartir: e.target.value })}
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-mono text-slate-800 leading-relaxed"
+                      />
+                    </div>
+
+                    {/* Perfil Docente y Planificación Curricular */}
+                    <DocenteProfileSection
+                      nombreDocente={formData.nombreDocente}
+                      docenteClasificacion={formData.docenteClasificacion}
+                      docenteTelefono={formData.docenteTelefono}
+                      docenteCorreo={formData.docenteCorreo}
+                      docenteEspecialidad={formData.docenteEspecialidad}
+                      tarifaHoraDocente={formData.tarifaHoraDocente}
+                      campoConError={campoConError}
+                      idPrefijo=""
+                      moneda={moneda}
+                      onDocenteChange={(cambios) => {
+                        setFormData(prev => ({ ...prev, ...cambios }));
                       }}
-                      className={`w-full px-3 py-1.5 text-xs bg-white rounded-lg font-mono text-slate-800 leading-relaxed transition-all ${
-                        campoConError === 'input-temas-impartir'
-                          ? 'border-2 border-rose-500 ring-1 ring-rose-500 bg-white font-medium'
-                          : 'border border-emerald-300/80 focus:ring-2 focus:ring-emerald-500'
-                      }`}
+                      onClearError={(campo) => {
+                        if (campoConError === campo) setCampoConError(null);
+                      }}
                     />
-                    <div className="flex items-center justify-between text-[10px] text-emerald-800">
-                      <span>Desglose temático que guiará las sesiones de clase.</span>
-                      <button
-                        type="button"
-                        onClick={() => {
+
+                    <CurricularPlanningSection
+                      campoConError={campoConError}
+                      cantidadTemas={Number(formData.cantidadTemas) || 4}
+                      horasClasePorTema={Number(formData.horasClasePorTema) || (formData.nivel === 'Básico' ? 3 : 5)}
+                      totalHorasCurso={Number(formData.horasClase) || 0}
+                      metodologia={formData.metodologia}
+                      planificacionPdf={formData.planificacionPdf}
+                      tipoProyecto={formData.tipoProyecto}
+                      nivelProyecto={formData.nivel}
+                      nombreProyecto={formData.nombreProyecto}
+                      proyectosExistentes={proyectosExistentes}
+                      proyectoIdActual={formData.id}
+                      nombreDocente={formData.nombreDocente}
+                      docenteEspecialidad={formData.docenteEspecialidad}
+                      docenteCorreo={formData.docenteCorreo}
+                      docenteTelefono={formData.docenteTelefono}
+                      docenteClasificacion={formData.docenteClasificacion}
+                      tarifaHoraDocente={formData.tarifaHoraDocente}
+                      temasImpartir={formData.temasImpartir}
+                      objetivoGeneral={formData.objetivoGeneral}
+                      horario={formData.horario}
+                      diasClase={formData.diasClase}
+                      onDocenteSeleccionado={(docente) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          nombreDocente: docente.nombre,
+                          docenteEspecialidad: docente.especialidad,
+                          docenteCorreo: docente.email || docente.correo || prev.docenteCorreo,
+                          docenteTelefono: docente.telefono || prev.docenteTelefono,
+                          docenteClasificacion: (docente.clasificacion as any) || (docente.titulo as any) || prev.docenteClasificacion,
+                          tarifaHoraDocente: docente.tarifaHoraSugerida,
+                        }));
+                        if (campoConError === 'input-docente') setCampoConError(null);
+                      }}
+                      onNivelChange={(val, configNivel) => {
+                        const esBasico = val === 'Básico';
+                        const cfg = configNivel || obtenerConfiguracionHorasPorNivel(val);
+                        const horasTotales = esBasico ? 12 : cfg.totalHoras;
+                        const temas = esBasico ? 4 : cfg.cantidadTemas;
+                        const horasPorTema = esBasico ? 3 : cfg.horasPorTema;
+                        setFormData(prev => ({
+                          ...prev,
+                          nivel: val,
+                          cantidadTemas: temas,
+                          horasClasePorTema: horasPorTema,
+                          horasClase: horasTotales,
+                          costoDocenteManual: prev.usarTarifaHora ? prev.costoDocenteManual : (horasTotales * (Number(prev.tarifaHoraDocente) || 200)),
+                        }));
+                      }}
+                      onCantidadTemasChange={(val) => setFormData(prev => ({ ...prev, cantidadTemas: val }))}
+                      onHorasClasePorTemaChange={(val) => setFormData(prev => ({ ...prev, horasClasePorTema: val }))}
+                      onTotalHorasCursoChange={(val) => setFormData(prev => ({ ...prev, horasClase: val }))}
+                      onMetodologiaChange={(val) => setFormData(prev => ({ ...prev, metodologia: val }))}
+                      onPlanificacionPdfChange={(pdf) => setFormData(prev => ({ ...prev, planificacionPdf: pdf }))}
+                    />
+                  </div>
+                )}
+
+                {/* PARTE FISCAL DEL SAR (LLENADO A MANO) */}
+                <div className="bg-amber-50/70 p-3.5 rounded-xl border border-amber-200/90 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="select-tipo" className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                      <Scale className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Clasificación Oficial del SAR & Régimen de ISV *</span>
+                    </label>
+                    <span className={`text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded border shadow-2xs ${
+                      formData.aplicaISV
+                        ? 'bg-amber-100 text-amber-900 border-amber-300'
+                        : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                    }`}>
+                      {formData.aplicaISV ? '🔴 Grava 15% ISV' : '🟢 Exento (0% ISV)'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
+                        Tipo de Servicio Fiscal SAR *
+                      </label>
+                      <select
+                        id="select-tipo"
+                        value={formData.tipoProyecto}
+                        onChange={(e) => {
+                          const nuevoTipo = e.target.value as TipoProyecto;
+                          const regla = obtenerReglaFiscalPorTipoProyecto(nuevoTipo);
                           setFormData({
                             ...formData,
-                            temasImpartir: `Módulo 1: Introducción y fundamentos teóricos de ${formData.nombreProyecto || 'la materia'}\nMódulo 2: Técnicas aplicadas y resolución de casos prácticos\nMódulo 3: Herramientas de optimización y mejores prácticas\nMódulo 4: Proyecto integrador y evaluación final de desempeño`
+                            tipoProyecto: nuevoTipo,
+                            servicioFiscal: regla.servicio as TipoServicioFiscal,
+                            aplicaISV: regla.gravaISV,
                           });
-                          if (campoConError === 'input-temas-impartir') setCampoConError(null);
                         }}
-                        className="text-[10px] font-semibold text-emerald-700 hover:text-emerald-900 underline"
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 font-bold text-slate-900"
                       >
-                        + Cargar plantilla de temas sugeridos
-                      </button>
+                        <option value="Capacitación profesional / Mentoría ejecutiva">Capacitación profesional / Mentoría ejecutiva (15% ISV)</option>
+                        <option value="Formación académica acreditada (ej. convenios universitarios)">Formación académica acreditada (Exento 0% ISV)</option>
+                        <option value="Servicios educativos no acreditados (talleres, cursos libres)">Servicios educativos no acreditados (talleres, cursos libres) (15% ISV)</option>
+                        <option value="Consultoría empresarial">Consultoría empresarial (15% ISV)</option>
+                        <option value="Intermediación laboral / servicios de RRHH">Intermediación laboral / servicios de RRHH (15% ISV)</option>
+                        <option value="Servicios administrativos / gestión de proyectos">Servicios administrativos / gestión de proyectos (15% ISV)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">
+                        Correlativo Fiscal SAR (ISV) *
+                      </label>
+                      <input
+                        id="input-codigo-fiscal-sar"
+                        type="text"
+                        value={formData.codigoFiscalSAR}
+                        onChange={(e) => {
+                          setFormData({ ...formData, codigoFiscalSAR: e.target.value.toUpperCase() });
+                          if (campoConError === 'input-codigo-fiscal-sar') setCampoConError(null);
+                        }}
+                        placeholder="Ej: SAR-ISV-2026-001"
+                        className={`w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-white border rounded-lg focus:ring-2 focus:ring-amber-500 text-slate-900 ${
+                          campoConError === 'input-codigo-fiscal-sar'
+                            ? 'border-rose-500 ring-2 ring-rose-400 bg-rose-50/50'
+                            : 'border-slate-300'
+                        }`}
+                      />
                     </div>
                   </div>
-
-                  {/* Planificación Curricular Avanzada: Horas por Tema, Total Horas, Metodología y Documento PDF */}
-                  <CurricularPlanningSection
-                    campoConError={campoConError}
-                    cantidadTemas={Number(formData.cantidadTemas) || 4}
-                    horasClasePorTema={Number(formData.horasClasePorTema) || (formData.nivel === 'Básico' ? 3 : 5)}
-                    totalHorasCurso={Number(formData.horasClase) || 0}
-                    metodologia={formData.metodologia}
-                    planificacionPdf={formData.planificacionPdf}
-                    tipoProyecto={formData.tipoProyecto}
-                    nivelProyecto={formData.nivel}
-                    nombreProyecto={formData.nombreProyecto}
-                    proyectosExistentes={proyectosExistentes}
-                    proyectoIdActual={formData.id}
-                    nombreDocente={formData.nombreDocente}
-                    onDocenteSeleccionado={(docente) => {
-                      setFormData(prev => ({
-                        ...prev,
-                        nombreDocente: docente.nombre,
-                        docenteEspecialidad: docente.especialidad,
-                        docenteCorreo: docente.correo || prev.docenteCorreo,
-                        docenteTelefono: docente.telefono || prev.docenteTelefono,
-                        docenteClasificacion: docente.clasificacion || prev.docenteClasificacion,
-                        tarifaHoraDocente: docente.tarifaHoraSugerida,
-                      }));
-                      if (campoConError === 'input-docente') setCampoConError(null);
-                    }}
-                    onNivelChange={(val, configNivel) => {
-                      const cfg = configNivel || obtenerConfiguracionHorasPorNivel(val);
-                      setFormData(prev => ({
-                        ...prev,
-                        nivel: val,
-                        cantidadTemas: cfg.cantidadTemas,
-                        horasClasePorTema: cfg.horasPorTema,
-                        horasClase: cfg.totalHoras
-                      }));
-                      if (campoConError === 'select-nivel-curricular') setCampoConError(null);
-                      if (campoConError === 'input-horas-clase') setCampoConError(null);
-                    }}
-                    onCantidadTemasChange={(val) => {
-                      setFormData(prev => ({ ...prev, cantidadTemas: val }));
-                      if (campoConError === 'input-cantidad-temas') setCampoConError(null);
-                    }}
-                    onHorasClasePorTemaChange={(val) => {
-                      setFormData(prev => ({ ...prev, horasClasePorTema: val }));
-                      if (campoConError === 'input-horas-por-tema') setCampoConError(null);
-                    }}
-                    onTotalHorasCursoChange={(val) => {
-                      setFormData(prev => ({ ...prev, horasClase: val }));
-                      if (campoConError === 'input-total-horas-curso') setCampoConError(null);
-                    }}
-                    onMetodologiaChange={(val) => {
-                      setFormData(prev => ({ ...prev, metodologia: val }));
-                      if (campoConError === 'input-metodologia') setCampoConError(null);
-                    }}
-                    onPlanificacionPdfChange={(pdf) => setFormData(prev => ({ ...prev, planificacionPdf: pdf }))}
-                  />
-
-                  {/* Docente Asignado, Clasificación y Datos de Contacto */}
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2.5">
-                    <div className="flex items-center justify-between border-b border-slate-200/80 pb-1.5">
-                      <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-blue-600" />
-                        Perfil Docente y Canales de Contacto Directo
-                      </span>
-                      <span className="text-[10px] font-semibold text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded">
-                        Cuerpo Académico
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Docente Asignado <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          id="input-docente"
-                          type="text"
-                          placeholder="Nombre del docente"
-                          value={formData.nombreDocente}
-                          onChange={(e) => {
-                            setFormData({ ...formData, nombreDocente: e.target.value });
-                            if (campoConError === 'input-docente') setCampoConError(null);
-                          }}
-                          className={`w-full px-2.5 py-1.5 text-xs bg-white border rounded-lg font-medium transition-all ${
-                            campoConError === 'input-docente'
-                              ? 'border-rose-500 ring-2 ring-rose-400 bg-rose-50/50 text-rose-950 font-bold'
-                              : 'border-slate-300 focus:ring-1 focus:ring-emerald-500'
-                          }`}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Clasificación Académica <span className="text-rose-500">*</span>
-                        </label>
-                        <select
-                          id="select-clasificacion-docente"
-                          value={formData.docenteClasificacion}
-                          onChange={(e) => {
-                            setFormData({ ...formData, docenteClasificacion: e.target.value as any });
-                            if (campoConError === 'select-clasificacion-docente') setCampoConError(null);
-                          }}
-                          className={`w-full px-2.5 py-1.5 text-xs bg-white border rounded-lg font-semibold transition-all ${
-                            campoConError === 'select-clasificacion-docente'
-                              ? 'border-rose-500 ring-2 ring-rose-400 bg-rose-50/50 text-rose-950'
-                              : 'border-slate-300 focus:ring-1 focus:ring-blue-500 text-slate-800'
-                          }`}
-                        >
-                          <option value="Licenciatura">Licenciatura</option>
-                          <option value="Ingeniería">Ingeniería</option>
-                          <option value="Maestría">Maestría</option>
-                          <option value="Doctorado">Doctorado</option>
-                          <option value="Posdoctorado">Posdoctorado</option>
-                          <option value="Técnico">Técnico</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Número de Contacto <span className="text-slate-400 font-normal">(Tel/WhatsApp)</span>
-                        </label>
-                        <input
-                          id="input-telefono-docente"
-                          type="text"
-                          placeholder="Ej: +504 9876-5432"
-                          value={formData.docenteTelefono}
-                          onChange={(e) => setFormData({ ...formData, docenteTelefono: e.target.value })}
-                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 font-mono"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Correo Electrónico
-                        </label>
-                        <input
-                          id="input-correo-docente"
-                          type="email"
-                          placeholder="docente@summit.hn"
-                          value={formData.docenteCorreo}
-                          onChange={(e) => setFormData({ ...formData, docenteCorreo: e.target.value })}
-                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-semibold text-slate-700">Clasificación Oficial del SAR</label>
-                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                        {formData.aplicaISV ? '15% ISV' : 'Exento (0%)'}
-                      </span>
-                    </div>
-                    <select
-                      id="select-tipo"
-                      value={formData.tipoProyecto}
-                      onChange={(e) => {
-                        const nuevoTipo = e.target.value as TipoProyecto;
-                        const regla = obtenerReglaFiscalPorTipoProyecto(nuevoTipo);
-                        setFormData({
-                          ...formData,
-                          tipoProyecto: nuevoTipo,
-                          servicioFiscal: regla.servicio as TipoServicioFiscal,
-                          aplicaISV: regla.gravaISV,
-                        });
-                      }}
-                      className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-amber-500 font-semibold text-slate-900"
-                    >
-                      <option value="Capacitación profesional / Mentoría ejecutiva">Capacitación profesional / Mentoría ejecutiva (15% ISV)</option>
-                      <option value="Formación académica acreditada (ej. convenios universitarios)">Formación académica acreditada (Exento 0% ISV)</option>
-                      <option value="Servicios educativos no acreditados (talleres, cursos libres)">Servicios educativos no acreditados (talleres, cursos libres) (15% ISV)</option>
-                      <option value="Consultoría empresarial">Consultoría empresarial (15% ISV)</option>
-                      <option value="Intermediación laboral / servicios de RRHH">Intermediación laboral / servicios de RRHH (15% ISV)</option>
-                      <option value="Servicios administrativos / gestión de proyectos">Servicios administrativos / gestión de proyectos (15% ISV)</option>
-                    </select>
-                  </div>
+                </div>
+              </div>
 
                   {/* Control de Cronología de Elaboración, Plazo de 20 Días Calendario y Decisión Comercial (Exclusivo Gerencia de Comercialización) */}
                   {!esModoAcad && (
@@ -1782,8 +2055,6 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
               {/* Sección 2: Estructura de Costos Operativos */}
               <div 
@@ -1877,9 +2148,14 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Tarifa Docente por Hora ({moneda}) <span className="text-rose-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Tarifa Docente por Hora ({moneda}) <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-1.5 py-0.2 rounded inline-flex items-center gap-1">
+                        ⚡ Halado de Perfil Docente
+                      </span>
+                    </div>
                     <input
                       id="input-tarifa-docente"
                       type="number"
@@ -1897,8 +2173,9 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                           : 'border-slate-300 focus:ring-2 focus:ring-blue-500'
                       }`}
                     />
-                    <span className="text-[10px] text-slate-500 block mt-0.5">
-                      Subtotal docente: {formatearMoneda(calculoEnVivo.costoDocenteCalculado, moneda)}
+                    <span className="text-[10px] text-slate-500 flex items-center justify-between mt-0.5">
+                      <span>Docente: {formData.nombreDocente || 'Sin asignar'}</span>
+                      <strong className="text-emerald-700 font-bold font-mono">Honorarios: {formatearMoneda(calculoEnVivo.costoDocenteCalculado, moneda)}</strong>
                     </span>
                   </div>
                 </div>
@@ -2734,7 +3011,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                   </div>
                 </div>
 
-                {/* Control POA 2027 y Rebaja Mensual */}
+                {/* Control POA 2026 y Rebaja Mensual */}
                 <div className="bg-slate-800/90 rounded-xl p-3 border border-slate-700 space-y-2 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1">

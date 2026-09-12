@@ -1,6 +1,11 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { DocenteBanco } from './docenteDirectoryUtils';
+import { 
+  agregarEncabezadoOficialPDF, 
+  agregarPieDePaginaOficialPDF, 
+  SUMMIT_BRANDING 
+} from './brandingUtils';
 
 /**
  * Genera el documento PDF formal del Curriculum Vitae / Hoja de Vida Institucional del Docente.
@@ -25,40 +30,18 @@ export function generarDocenteCvPdf(docente: DocenteBanco): jsPDF {
   const colorBgLight = [248, 250, 252]; // Slate 50
   const colorBorder = [226, 232, 240]; // Slate 200
 
-  // 1. ENCABEZADO SUPERIOR EJECUTIVO
-  doc.setFillColor(15, 23, 42); // Slate 900
-  doc.rect(0, 0, pageWidth, 28, 'F');
-
-  // Franja decorativa cyan / azul
-  doc.setFillColor(37, 99, 235);
-  doc.rect(0, 28, pageWidth, 2.5, 'F');
-
-  // Marca y Título
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text('SUMMIT IMPULSA GLOBAL', margin, 10);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(191, 219, 254);
-  doc.text('Summit Impulsa S. de R.L. • RTN: 05019026435770 • San Pedro Sula, Cortés, Honduras', margin, 15);
-  doc.text('Dirección y Gerencia Académica • Banco Oficial de Docentes & Facilitadores', margin, 19);
-
-  // Badge derecho de Documento Oficial
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(255, 255, 255);
-  doc.text('CURRICULUM VITAE INSTITUCIONAL', pageWidth - margin, 10, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(147, 197, 253);
-  doc.text(`Expediente ID: ${docente.id.toUpperCase()}`, pageWidth - margin, 15, { align: 'right' });
-  doc.text(`Emisión: ${new Date().toLocaleDateString('es-HN', { year: 'numeric', month: 'short', day: 'numeric' })}`, pageWidth - margin, 19, { align: 'right' });
+  // 1. ENCABEZADO SUPERIOR EJECUTIVO (OFICIAL ESTANDARIZADO DE LA EMPRESA)
+  const codigoDocente = `EXP-DOC-${docente.id.toUpperCase()}`;
+  let y = agregarEncabezadoOficialPDF(doc, {
+    gerencia: 'academica',
+    tituloDocumento: 'PLANILLA OFICIAL DE CURRICULUM VITAE',
+    subtituloDocumento: 'Expediente Institucional de Docente & Facilitador Acreditado',
+    codigoDocumento: codigoDocente,
+    folioCorrelativo: docente.id.toUpperCase(),
+    esPrimeraPagina: true,
+  });
 
   // 2. BLOQUE HERO DEL DOCENTE (Tarjeta de Perfil)
-  let y = 36;
-
   doc.setFillColor(248, 250, 252); // Slate 50
   doc.setDrawColor(203, 213, 225); // Slate 300
   doc.roundedRect(margin, y, pageWidth - (margin * 2), 38, 2.5, 2.5, 'FD');
@@ -83,17 +66,24 @@ export function generarDocenteCvPdf(docente: DocenteBanco): jsPDF {
   doc.setTextColor(30, 58, 138);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text((docente.titulo || 'DOCENTE INSTITUCIONAL / ESPECIALISTA').toUpperCase(), infoX, y + 9);
+  const gradoTxt = (docente.clasificacion || docente.titulo || 'DOCENTE INSTITUCIONAL').toUpperCase();
+  doc.text(gradoTxt, infoX, y + 9);
 
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.text(docente.nombre, infoX, y + 16);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(71, 85, 105);
-  doc.text(`Especialidad: ${docente.especialidad}`, infoX, y + 22);
+  doc.text(`Especialidad Principal: ${docente.especialidad}`, infoX, y + 22);
+
+  // Subtítulo de Planilla de la Empresa
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(5, 150, 105); // Emerald 600
+  doc.text('PLANILLA OFICIAL SUMMIT IMPULSA GLOBAL • POA 2026', infoX, y + 28);
 
   // Mini Badges de Tarifa y Calificación a la derecha
   const rightX = pageWidth - margin - 5;
@@ -122,7 +112,40 @@ export function generarDocenteCvPdf(docente: DocenteBanco): jsPDF {
   doc.setTextColor(71, 85, 105);
   doc.text(`Régimen SAR: ${docente.estadoSAR || 'Al Día'}`, rightX - 50, y + 29);
 
-  y += 44;
+  y += 42;
+
+  // 2.1 BLOQUE DE INTEGRACIÓN DEL EXPEDIENTE DE CV ADJUNTO EN LA PLANILLA
+  const tieneCvAdjunto = Boolean(docente.cvPdfNombre || docente.cvPdfDataUrl);
+  doc.setFillColor(tieneCvAdjunto ? 240 : 248, tieneCvAdjunto ? 253 : 250, tieneCvAdjunto ? 244 : 252);
+  doc.setDrawColor(tieneCvAdjunto ? 187 : 226, tieneCvAdjunto ? 247 : 232, tieneCvAdjunto ? 208 : 240);
+  doc.roundedRect(margin, y, pageWidth - (margin * 2), 16, 2, 2, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(tieneCvAdjunto ? 22 : 30, tieneCvAdjunto ? 101 : 58, tieneCvAdjunto ? 52 : 138);
+  doc.text(
+    tieneCvAdjunto 
+      ? '✓ EXPEDIENTE CURRICULAR ORIGINAL CARGADO E INTEGRADO EN ESTA PLANILLA' 
+      : 'ℹ EXPEDIENTE CURRICULAR REGISTRADO DIRECTAMENTE EN LA PLANILLA CORPORATIVA',
+    margin + 4, 
+    y + 5.5
+  );
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  doc.setTextColor(51, 65, 85);
+  if (tieneCvAdjunto) {
+    const nombreArchivoLimpio = (docente.cvPdfNombre || 'CV_Docente_Adjunto.pdf').substring(0, 55);
+    const tamanoTxt = docente.cvPdfTamano ? ` • ${docente.cvPdfTamano}` : '';
+    const fechaTxt = docente.cvPdfFechaSubida ? ` • Fecha Carga: ${docente.cvPdfFechaSubida}` : '';
+    doc.text(`Archivo Certificado: "${nombreArchivoLimpio}"${tamanoTxt}${fechaTxt}`, margin + 4, y + 10.5);
+    doc.text('Estado: Homologado por Gerencia de Academia conforme a normativas de contratación docente POA 2026.', margin + 4, y + 14);
+  } else {
+    doc.text('Este documento funge como Hoja de Vida Oficial certificada por Summit Impulsa Global, S.A. de C.V.', margin + 4, y + 10.5);
+    doc.text('Los atestados, formación académica y trayectoria han sido validados por la Dirección Curricular.', margin + 4, y + 14);
+  }
+
+  y += 20;
 
   // 3. TABLA DE DATOS DE CONTACTO & LOCALIZACIÓN
   autoTable(doc, {
@@ -131,7 +154,7 @@ export function generarDocenteCvPdf(docente: DocenteBanco): jsPDF {
     head: [['DATOS DE CONTACTO INSTITUCIONAL', 'ESTADO ADMINISTRATIVO Y OPERATIVO']],
     body: [
       [
-        `Correo Electrónico: ${docente.email || 'No registrado'}\nTeléfono / WhatsApp: ${docente.telefono || 'No registrado'}\nSede Operativa: San Pedro Sula / Tegucigalpa, Honduras`,
+        `Correo Electrónico: ${docente.email || docente.correo || 'No registrado'}\nTeléfono / WhatsApp: ${docente.telefono || 'No registrado'}\nSede Operativa: San Pedro Sula / Tegucigalpa, Honduras`,
         `Modalidades: Presencial, Virtual Sincrónica e Híbrida\nDisponibilidad Horaria: Semanal / Fines de Semana\nConvenio Docente: Vigente Ciclo POA 2026`
       ]
     ],
@@ -157,7 +180,7 @@ export function generarDocenteCvPdf(docente: DocenteBanco): jsPDF {
     }
   });
 
-  y = (doc as any).lastAutoTable.finalY + 7;
+  y = (doc as any).lastAutoTable.finalY + 6;
 
   // 4. SECCIÓN BIOGRAFÍA / RESUMEN PROFESIONAL
   doc.setFillColor(241, 245, 249);
@@ -272,14 +295,11 @@ export function generarDocenteCvPdf(docente: DocenteBanco): jsPDF {
   doc.setTextColor(71, 85, 105);
   doc.text(`CÓD: SIG-ACAD-${docente.id.toUpperCase()}-2026`, margin + 6, y + 27);
 
-  // PIE DE PÁGINA
-  doc.setFillColor(15, 23, 42);
-  doc.rect(0, pageHeight - 10, pageWidth, 10, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.text('Summit Impulsa Global • Documento Oficial de Currículum Vitae y Acreditación Docente • Todos los derechos reservados', margin, pageHeight - 4);
-  doc.text('Página 1 de 1', pageWidth - margin, pageHeight - 4, { align: 'right' });
+  // PIE DE PÁGINA (OFICIAL ESTANDARIZADO)
+  agregarPieDePaginaOficialPDF(doc, {
+    codigo: `SIG-ACAD-${docente.id.toUpperCase()}-2026`,
+    gerencia: 'Gerencia de Academia y Formación',
+  });
 
   return doc;
 }

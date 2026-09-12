@@ -8,11 +8,11 @@
  */
 
 import { ProyectoEducativo, Moneda } from '../types';
-import { POA_2027_DATOS, formatearHNL } from './poa2027Data';
+import { POA_2026_DATOS, formatearHNL } from './poa2026Data';
 import { obtenerClaveMesProyecto, formatearEtiquetaMes } from './monthUtils';
 
-const TASA_CAMBIO_REF = POA_2027_DATOS.resumen.tipoCambio; // 27.00 HNL / USD
-export const META_ANUAL_FACTURACION_POA_HNL = POA_2027_DATOS.resumen.ingresosProyectados; // L. 346,320.00
+const TASA_CAMBIO_REF = POA_2026_DATOS.resumen.tipoCambio; // 27.00 HNL / USD
+export const META_ANUAL_FACTURACION_POA_HNL = POA_2026_DATOS.resumen.ingresosProyectados; // L. 346,320.00
 
 /**
  * Convierte cualquier monto de moneda de la app a Lempiras (HNL)
@@ -315,3 +315,71 @@ export function revocarAprobacionFinalGerenciaGeneral(
     historialCambios: historial,
   };
 }
+
+/**
+ * Autorización de Gerencia Académica (Paso 1):
+ * Al guardar la estructura académica, el proyecto pasa a Gerencia Comercial para su venta, distribución y matrícula.
+ */
+export function emitirAutorizacionAcademica(
+  proyecto: ProyectoEducativo,
+  usuario: string = 'Lic. Daniel Osorto - Gerencia Académica',
+  observaciones: string = 'Estructura académica validada y guardada. Proyecto remitido a Gerencia Comercial para venta, distribución y matrícula.'
+): ProyectoEducativo {
+  const fechaHoy = new Date().toISOString().split('T')[0];
+  const historial = [
+    ...(proyecto.historialCambios || []),
+    {
+      id: `hist-acad-${Date.now()}`,
+      fecha: new Date().toISOString(),
+      usuario,
+      tipoCambio: 'edicion' as any,
+      titulo: 'Validación y Autorización Académica',
+      descripcion: observaciones,
+    },
+  ];
+
+  return {
+    ...proyecto,
+    autorizacionAcademica: true,
+    fechaAutorizacionAcademica: fechaHoy,
+    aprobadoPorAcademica: usuario,
+    observacionesAutorizacionAcademica: observaciones,
+    etapaFlujo: 'comercializacion',
+    historialCambios: historial,
+  };
+}
+
+/**
+ * Autorización de Gerencia Comercial (Paso 2):
+ * Luego del proceso de venta, distribución y matrícula, la Gerencia Comercial autoriza
+ * y pasa el proyecto a Gerencia General para su revisión final, aprobación y rebaja del POA 2026.
+ */
+export function emitirAutorizacionComercial(
+  proyecto: ProyectoEducativo,
+  usuario: string = 'Lic. Carlos Mendoza - Gerencia Comercial',
+  observaciones: string = 'Proceso de venta y matrícula completado satisfactoriamente. Remitido a Gerencia General para su revisión final, aprobación y rebaja del POA 2026.'
+): ProyectoEducativo {
+  const fechaHoy = new Date().toISOString().split('T')[0];
+  const historial = [
+    ...(proyecto.historialCambios || []),
+    {
+      id: `hist-com-${Date.now()}`,
+      fecha: new Date().toISOString(),
+      usuario,
+      tipoCambio: 'edicion' as any,
+      titulo: 'Autorización de Gerencia Comercial',
+      descripcion: observaciones,
+    },
+  ];
+
+  return {
+    ...proyecto,
+    autorizacionComercial: true,
+    fechaAutorizacionComercial: fechaHoy,
+    aprobadoPorComercial: usuario,
+    observacionesAutorizacionComercial: observaciones,
+    etapaFlujo: 'dictamen_general',
+    historialCambios: historial,
+  };
+}
+

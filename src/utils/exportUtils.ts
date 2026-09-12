@@ -3,6 +3,12 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ProyectoEducativo, Moneda } from '../types';
 import { formatearMoneda, calcularMetricasProyecto } from './calculations';
+import { 
+  agregarEncabezadoOficialPDF, 
+  agregarPieDePaginaOficialPDF, 
+  getSummitAsciiHeader,
+  SUMMIT_BRANDING 
+} from './brandingUtils';
 export { exportarReporteMensualConsolidadoPDF } from './monthlyPdfExportUtils';
 export type { ParametrosReporteMensualPDF, ResultadoExportacionMensualPDF } from './monthlyPdfExportUtils';
 
@@ -27,46 +33,18 @@ export function exportarProyectoPDF(proyecto: ProyectoEducativo, moneda: Moneda 
   const colorBgLight = [248, 250, 252]; // Slate 50
   const colorBorder = [226, 232, 240]; // Slate 200
 
-  // --- 1. ENCABEZADO EJECUTIVO SUPERIOR ---
-  // Barra superior decorativa
-  doc.setFillColor(15, 23, 42);
-  doc.rect(0, 0, pageWidth, 25, 'F');
-
-  // Franja decorativa azul/dorada
-  doc.setFillColor(37, 99, 235);
-  doc.rect(0, 25, pageWidth, 2.5, 'F');
-
-  // Título del Documento & Marca
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('SUMMIT IMPULSA GLOBAL', margin, 9);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(191, 219, 254);
-  doc.text('Summit Impulsa S. de R.L. • RTN: 05019026435770 • San Pedro Sula, Cortés, Honduras', margin, 14);
-  doc.text('Transformando talento en resultados globales.', margin, 18);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(255, 255, 255);
-  doc.text('INFORME EJECUTIVO DE RENTABILIDAD & CONTROL FINANCIERO', margin, 23);
-
-  // Fecha y Moneda en Header
-  const fechaHoy = new Date().toLocaleDateString('es-ES', { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+  // --- 1. ENCABEZADO EJECUTIVO SUPERIOR OFICIAL ESTANDARIZADO ---
+  const correlativoStr = String(proyecto.numeroCorrelativo || proyecto.id).padStart(3, '0');
+  const codigoFiscal = proyecto.codigoFiscalSAR || `SAR-ISV-2026-${correlativoStr}`;
+  let y = agregarEncabezadoOficialPDF(doc, {
+    gerencia: 'general',
+    tituloDocumento: 'INFORME EJECUTIVO DE RENTABILIDAD & CONTROL FINANCIERO',
+    subtituloDocumento: proyecto.nombreProyecto,
+    codigoDocumento: codigoFiscal,
+    folioCorrelativo: correlativoStr,
+    moneda,
+    esPrimeraPagina: true,
   });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(226, 232, 240);
-  doc.text(`Fecha: ${fechaHoy}`, pageWidth - margin, 10, { align: 'right' });
-  doc.text(`Moneda: ${moneda} (${simMoneda}) | Correlativo #${String(proyecto.numeroCorrelativo || proyecto.id).padStart(3, '0')}`, pageWidth - margin, 16, { align: 'right' });
-  doc.text(`SAR: ${proyecto.codigoFiscalSAR || `SAR-ISV-2026-${String(proyecto.numeroCorrelativo || proyecto.id).padStart(3, '0')}`}`, pageWidth - margin, 21, { align: 'right' });
-
-  let y = 34;
 
   // --- 2. TARJETA DE IDENTIFICACIÓN DEL PROYECTO ---
   doc.setFillColor(248, 250, 252);
@@ -408,12 +386,11 @@ export function exportarProyectoPDF(proyecto: ProyectoEducativo, moneda: Moneda 
   doc.text('Responsable de Proyecto / Docencia', firma1X + firmaW / 2, firmaY + 3.5, { align: 'center' });
   doc.text('Dirección Financiera / Aprobación', firma2X + firmaW / 2, firmaY + 3.5, { align: 'center' });
 
-  // Pie de página de auditoría
-  doc.setFontSize(6.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(148, 163, 184);
-  doc.text(`Generado el ${new Date().toLocaleString('es-HN')} • Summit Impulsa S. de R.L. (RTN: 05019026435770, San Pedro Sula, Cortés) • Matriz de Rentabilidad`, margin, pageHeight - 5);
-  doc.text('Página 1 de 1', pageWidth - margin, pageHeight - 5, { align: 'right' });
+  // Pie de página oficial estandarizado
+  agregarPieDePaginaOficialPDF(doc, { 
+    codigo: codigoFiscal, 
+    gerencia: 'Gerencia General' 
+  });
 
   // Guardar archivo PDF
   const nombreLimpio = proyecto.nombreProyecto
@@ -567,7 +544,11 @@ export function exportarACSV(proyectos: ProyectoEducativo[]) {
     `"${p.observaciones.replace(/"/g, '""')}"`,
   ]);
 
-  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const bannerInstitucional = getSummitAsciiHeader(
+    'Gerencia General', 
+    'Matriz Oficial de Rentabilidad y Proyectos Educativos POA 2026'
+  );
+  const csvContent = `${bannerInstitucional}\n${[headers.join(','), ...rows.map(r => r.join(','))].join('\n')}`;
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -885,37 +866,16 @@ export function exportarInformeAuditoriaPDF(params: ParametrosAuditoriaPDF) {
     return false;
   };
 
-  // --- ENCABEZADO PRINCIPAL EJECUTIVO (Página 1) ---
-  doc.setFillColor(15, 23, 42); // Slate 900
-  doc.rect(0, 0, pageWidth, 26, 'F');
-
-  doc.setFillColor(5, 150, 105); // Emerald 600
-  doc.rect(0, 26, pageWidth, 2.5, 'F');
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text('SUMMIT IMPULSA GLOBAL', margin, 10);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(167, 243, 208); // Emerald 200
-  doc.text('Summit Impulsa S. de R.L. • RTN: 05019026435770 • San Pedro Sula, Cortés, Honduras', margin, 15);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(255, 255, 255);
-  doc.text('INFORME DE AUDITORÍA AUTOMÁTICO • GOBERNANZA & RENTABILIDAD 2026', margin, 21);
-
-  // Metadata lateral
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(226, 232, 240);
-  doc.text(`Fecha: ${fechaAuditoria}`, pageWidth - margin, 10, { align: 'right' });
-  doc.text(`Moneda: ${moneda} | Universo: ${totalProyectos} Programas`, pageWidth - margin, 15, { align: 'right' });
-  doc.text(`Dictamen: ${scoreGeneral >= 80 ? 'APROBADO CON CONDICIONES' : 'OBSERVACIÓN REQUERIDA'}`, pageWidth - margin, 21, { align: 'right' });
-
-  y = 34;
+  // --- ENCABEZADO PRINCIPAL EJECUTIVO OFICIAL ESTANDARIZADO (Página 1) ---
+  y = agregarEncabezadoOficialPDF(doc, {
+    gerencia: 'auditoria',
+    tituloDocumento: 'INFORME DE AUDITORÍA AUTOMÁTICO • GOBERNANZA & RENTABILIDAD 2026',
+    subtituloDocumento: 'Dictamen Integral Multi-Gerencial y Cumplimiento SAR',
+    codigoDocumento: 'AUD-INT-2026',
+    fechaEmision: fechaAuditoria,
+    moneda,
+    esPrimeraPagina: true,
+  });
 
   // --- TARJETA DE RESUMEN EJECUTIVO & DICTAMEN ---
   doc.setFillColor(248, 250, 252);
@@ -1355,30 +1315,12 @@ export function exportarInformeAuditoriaPDF(params: ParametrosAuditoriaPDF) {
   doc.text('Aprobación Ejecutiva Final', f3X + firmaW / 2, firmaLineY + 6.5, { align: 'center' });
 
   // -------------------------------------------------------------------------
-  // 3. PIE DE PÁGINA Y NUMERACIÓN EN TODAS LAS PÁGINAS
+  // 3. PIE DE PÁGINA Y NUMERACIÓN EN TODAS LAS PÁGINAS (OFICIAL ESTANDARIZADO)
   // -------------------------------------------------------------------------
-  const totalPaginas = doc.getNumberOfPages();
-  for (let i = 1; i <= totalPaginas; i++) {
-    doc.setPage(i);
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.2);
-    doc.line(margin, pageHeight - 8, pageWidth - margin, pageHeight - 8);
-
-    doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(148, 163, 184);
-    doc.text(
-      `SUMMIT IMPULSA GLOBAL • Summit Impulsa S. de R.L. (RTN: 05019026435770, San Pedro Sula, Cortés) • Auditoría 2026 • Emisión: ${fechaAuditoria}`,
-      margin,
-      pageHeight - 4.5
-    );
-    doc.text(
-      `Página ${i} de ${totalPaginas}`,
-      pageWidth - margin,
-      pageHeight - 4.5,
-      { align: 'right' }
-    );
-  }
+  agregarPieDePaginaOficialPDF(doc, {
+    codigo: 'AUD-INT-2026',
+    gerencia: 'Auditoría Interna & Control de Gestión',
+  });
 
   // Descarga automática del archivo PDF
   const fechaHoyStr = new Date().toISOString().slice(0, 10);

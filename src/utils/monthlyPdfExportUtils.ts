@@ -8,6 +8,11 @@ import {
   formatearEtiquetaCortaMes 
 } from './monthUtils';
 import { subirReporteADrive } from '../services/googleDriveService';
+import { 
+  agregarEncabezadoOficialPDF, 
+  agregarPieDePaginaOficialPDF, 
+  SUMMIT_BRANDING 
+} from './brandingUtils';
 
 export interface ParametrosReporteMensualPDF {
   mesKey: string; // Formato 'YYYY-MM', ej: '2026-08'
@@ -134,66 +139,20 @@ export async function exportarReporteMensualConsolidadoPDF(
   const margin = 14;
   const contentWidth = pageWidth - margin * 2;
 
-  // Función auxiliar para dibujar encabezado institucional superior
+  // Función auxiliar para dibujar encabezado institucional superior estandarizado
   const dibujarEncabezadoPagina = (esPrimeraPagina: boolean) => {
-    // Franja azul marino oscuro (Slate 950)
-    doc.setFillColor(15, 23, 42);
-    doc.rect(0, 0, pageWidth, esPrimeraPagina ? 25 : 14, 'F');
-
-    // Línea de acento dorado / azul eléctrico
-    doc.setFillColor(37, 99, 235);
-    doc.rect(0, esPrimeraPagina ? 25 : 14, pageWidth, 2, 'F');
-
-    if (esPrimeraPagina) {
-      // Logotipo y Marca
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('SUMMIT IMPULSA GLOBAL', margin, 9);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.8);
-      doc.setTextColor(191, 219, 254);
-      doc.text('Summit Impulsa S. de R.L. • RTN: 05019026435770 • San Pedro Sula, Cortés, Honduras', margin, 14);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(255, 255, 255);
-      doc.text(`INFORME EJECUTIVO CONSOLIDADO • CIERRE MENSUAL DE RENTABILIDAD`, margin, 20.5);
-
-      // Metadatos lado derecho
-      const fechaHoy = new Date().toLocaleDateString('es-HN', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.setTextColor(56, 189, 248); // Sky 400
-      doc.text(`MES: ${etiquetaMes.toUpperCase()}`, pageWidth - margin, 10, { align: 'right' });
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(226, 232, 240);
-      doc.text(`Emisión: ${fechaHoy} | Moneda: ${moneda}`, pageWidth - margin, 15.5, { align: 'right' });
-      doc.text(`Programas Evaluados: ${totalProyectos} cursos / cohortes`, pageWidth - margin, 20.5, { align: 'right' });
-    } else {
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.text(`SUMMIT IMPULSA GLOBAL • CIERRE MENSUAL ${etiquetaMes.toUpperCase()}`, margin, 9.5);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(191, 219, 254);
-      doc.text(`Moneda: ${moneda} | ${totalProyectos} Proyectos`, pageWidth - margin, 9.5, { align: 'right' });
-    }
+    return agregarEncabezadoOficialPDF(doc, {
+      gerencia: 'general',
+      tituloDocumento: 'INFORME EJECUTIVO CONSOLIDADO • CIERRE MENSUAL DE RENTABILIDAD',
+      subtituloDocumento: `Período Operativo: ${etiquetaMes.toUpperCase()}`,
+      codigoDocumento: `CIERRE-${mesKey}`,
+      moneda,
+      esPrimeraPagina: esPrimeraPagina,
+    });
   };
 
   // --- PÁGINA 1: ENCABEZADO, RESUMEN EJECUTIVO & GRÁFICOS DE RENTABILIDAD ---
-  dibujarEncabezadoPagina(true);
-
-  let y = 32;
+  let y = dibujarEncabezadoPagina(true);
 
   // 4. TARJETA INFORMATIVA DEL MES CON METADATOS CLAVE
   doc.setFillColor(248, 250, 252);
@@ -697,20 +656,11 @@ export async function exportarReporteMensualConsolidadoPDF(
   doc.text('Cumplimiento de Metas de Matrícula', f2X + firmaW / 2, currentY + 7.5, { align: 'center' });
   doc.text('Dictamen Financiero & Cumplimiento SAR', f3X + firmaW / 2, currentY + 7.5, { align: 'center' });
 
-  // 10. PIE DE PÁGINA NUMERADO EN TODAS LAS PÁGINAS
-  const totalPaginas = doc.getNumberOfPages();
-  for (let i = 1; i <= totalPaginas; i++) {
-    doc.setPage(i);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text(
-      `Generado el ${new Date().toLocaleString('es-HN')} • Summit Impulsa S. de R.L. (RTN: 05019026435770, San Pedro Sula, Cortés) • Matriz de Rentabilidad`,
-      margin,
-      pageHeight - 6
-    );
-    doc.text(`Página ${i} de ${totalPaginas}`, pageWidth - margin, pageHeight - 6, { align: 'right' });
-  }
+  // 10. PIE DE PÁGINA NUMERADO EN TODAS LAS PÁGINAS (OFICIAL ESTANDARIZADO)
+  agregarPieDePaginaOficialPDF(doc, {
+    codigo: `CIERRE-${mesKey}`,
+    gerencia: 'Gerencia General & Finanzas',
+  });
 
   // 11. DESCARGA EN NAVEGADOR & RESPALDO AUTOMÁTICO EN GOOGLE DRIVE
   const mesLimpio = mesKey.replace(/[^0-9-]/g, '');

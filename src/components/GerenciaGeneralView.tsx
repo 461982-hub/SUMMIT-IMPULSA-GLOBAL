@@ -34,8 +34,13 @@ import {
   Target,
   Clock,
   Zap,
+  RotateCcw,
   FileCheck
 } from 'lucide-react';
+import { 
+  crearNotificacionAprobacionGGAComercializacion,
+  crearNotificacionRetornoGGAAcademica 
+} from '../utils/notificationUtils';
 import { ProyectoEducativo, Moneda, TipoServicioFiscal, EstadoProyecto, VistaPrincipal } from '../types';
 import { formatearMoneda, calcularMetricasProyecto } from '../utils/calculations';
 import { REGLAS_ISV_SERVICIOS, obtenerReglaISVPorServicio } from '../utils/isvRules';
@@ -146,6 +151,10 @@ export const GerenciaGeneralView: React.FC<GerenciaGeneralViewProps> = ({
   const [filtroFiscal, setFiltroFiscal] = useState<string>('todos');
   const [filtroRentabilidad, setFiltroRentabilidad] = useState<string>('todos');
   const [filtroFlujo, setFiltroFlujo] = useState<string>('todos');
+
+  // Modal para retorno de proyecto a Gerencia Académica por corrección financiera
+  const [proyectoParaRetornar, setProyectoParaRetornar] = useState<ProyectoEducativo | null>(null);
+  const [motivoRetornoGeneral, setMotivoRetornoGeneral] = useState<string>('');
 
   // Búsqueda y filtros rápidos de la vista principal para la matriz de proyectos
   const [busquedaMatriz, setBusquedaMatriz] = useState('');
@@ -261,6 +270,74 @@ export const GerenciaGeneralView: React.FC<GerenciaGeneralViewProps> = ({
       seLlevoACabo: nuevoEstado,
     });
     onGuardarProyecto(proyectoActualizado);
+  };
+
+  // Aprobar Viabilidad Financiera de Silabo y Trasladar formalmente a Comercialización
+  const handleAprobarViabilidadYTrasladarComercial = (p: ProyectoEducativo) => {
+    const ahora = new Date().toISOString();
+    const fechaHoy = new Date().toLocaleDateString('es-HN');
+    const proyectoActualizado: ProyectoEducativo = {
+      ...p,
+      etapaFlujo: 'comercializacion',
+      aprobadoPorGerenciaGeneralPrevia: true,
+      fechaAprobacionGerenciaGeneralPrevia: ahora,
+      fechaRevisionGerenciaGeneral: fechaHoy,
+      fechaEnvioComercializacion: ahora,
+      seLlevoACabo: 'Planificado',
+      observacionesRevisionGeneral: 'Viabilidad financiera revisada y aprobada formalmente por Gerencia General. Cumple estructura de costos y margen. Proyecto habilitado para comercialización y venta.',
+    };
+
+    const { notificacion, aviso } = crearNotificacionAprobacionGGAComercializacion(
+      proyectoActualizado,
+      proyectoActualizado.observacionesRevisionGeneral
+    );
+
+    proyectoActualizado.avisosProyecto = [aviso, ...(proyectoActualizado.avisosProyecto || [])];
+
+    onGuardarProyecto(proyectoActualizado);
+
+    if (onNotificar) {
+      onNotificar(`✅ Viabilidad financiera aprobada para "${p.nombreProyecto}". Trasladado formalmente a Gerencia de Comercialización.`);
+    }
+  };
+
+  // Retornar Proyecto a Gerencia Académica por Inconsistencia Financiera
+  const handleConfirmarRetornoAcademica = () => {
+    if (!proyectoParaRetornar) return;
+    const ahora = new Date().toISOString();
+    const fechaHoy = new Date().toLocaleDateString('es-HN');
+    const horaHoy = new Date().toLocaleTimeString('es-HN');
+    const motivoFinal = motivoRetornoGeneral.trim() || 'La Gerencia General determinó que la parte financiera requiere corrección (costos operativos, tarifa docente o margen de rentabilidad). Se devuelve a Gerencia Académica para su ajuste.';
+
+    const proyectoActualizado: ProyectoEducativo = {
+      ...proyectoParaRetornar,
+      etapaFlujo: 'elaboracion_academica',
+      aprobadoPorGerenciaGeneralPrevia: false,
+      seLlevoACabo: 'Planificado',
+      observacionesRevisionGeneral: `RETORNADO POR GERENCIA GENERAL (${fechaHoy} ${horaHoy}): ${motivoFinal}`,
+      fechaModificacion: fechaHoy,
+      horaModificacion: horaHoy,
+      registroAuditoria: {
+        ...proyectoParaRetornar.registroAuditoria,
+        ultimaModificacion: `${fechaHoy}, ${horaHoy} por Gerencia General (Retorno por Inconsistencia Financiera)`,
+        equipoModifico: 'Gerencia General',
+      }
+    };
+
+    const { notificacion, aviso } = crearNotificacionRetornoGGAAcademica(
+      proyectoActualizado,
+      motivoFinal
+    );
+
+    proyectoActualizado.avisosProyecto = [aviso, ...(proyectoActualizado.avisosProyecto || [])];
+
+    onGuardarProyecto(proyectoActualizado);
+    setProyectoParaRetornar(null);
+    setMotivoRetornoGeneral('');
+
+    if (onNotificar) {
+      onNotificar(`⚠️ Proyecto "${proyectoParaRetornar.nombreProyecto}" RETORNADO a Gerencia Académica para su corrección financiera.`);
+    }
   };
 
   // Aprobación Final de la Gerencia General & Deducción Mensual POA
@@ -1164,17 +1241,41 @@ export const GerenciaGeneralView: React.FC<GerenciaGeneralViewProps> = ({
                           <td className="py-3 px-3 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               
-                              {/* Botón de Dictamen Rápido 'Listo' */}
-                              {!esListo && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleEmitirDictamen(p, 'Listo')}
-                                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold flex items-center gap-1 transition-colors shadow-2xs"
-                                  title="Aprobar viabilidad financiera (Marcar 'Listo')"
-                                >
-                                  <Check className="w-3 h-3" />
-                                  <span>Aprobar 'Listo'</span>
-                                </button>
+                              {/* Botón: Aprobar Viabilidad y Trasladar a Comercialización */}
+                              {(!p.aprobadoPorGerenciaGeneralPrevia || p.etapaFlujo === 'revision_gerencia_general') ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAprobarViabilidadYTrasladarComercial(p)}
+                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
+                                    title="Aprobar viabilidad de costos y margen. Trasladar formalmente a Comercialización"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                    <span>Aprobar Viabilidad</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setProyectoParaRetornar(p)}
+                                    className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="Regresar a Gerencia Académica si no ve bien la parte financiera"
+                                  >
+                                    <RotateCcw className="w-3 h-3 text-rose-600" />
+                                    <span>Regresar a Académica</span>
+                                  </button>
+                                </>
+                              ) : (
+                                !esListo && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEmitirDictamen(p, 'Listo')}
+                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold flex items-center gap-1 transition-colors shadow-2xs cursor-pointer"
+                                    title="Marcar proyecto como 'Listo'"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                    <span>Aprobar 'Listo'</span>
+                                  </button>
+                                )
                               )}
 
                               {/* Botón de Imprimir Ficha Oficial cuando está Listo */}
@@ -1329,19 +1430,31 @@ export const GerenciaGeneralView: React.FC<GerenciaGeneralViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Margen de Ganancia Operativa (%) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="5"
-                    max="200"
-                    value={proyectoEditando.margenGananciaOperativa}
-                    onChange={(e) => setProyectoEditando({ ...proyectoEditando, margenGananciaOperativa: Number(e.target.value) })}
-                    required
-                    className="w-full px-3 py-1.5 text-xs bg-purple-50 border border-purple-300 rounded-lg font-mono font-bold text-purple-950"
-                  />
-                  <span className="text-[10px] text-slate-500">Rendimiento mínimo exigido</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Margen de Ganancia Operativa (%) <span className="text-rose-500">*</span>
+                    </label>
+                    <span className="text-xs font-bold font-mono text-purple-900 bg-purple-100 px-2 py-0.5 rounded">
+                      {proyectoEditando.margenGananciaOperativa}%
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1 mb-1">
+                    {[40, 50, 70, 80, 100].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setProyectoEditando({ ...proyectoEditando, margenGananciaOperativa: m })}
+                        className={`py-1 text-xs font-bold rounded text-center transition-all cursor-pointer ${
+                          proyectoEditando.margenGananciaOperativa === m
+                            ? 'bg-purple-700 text-white shadow-xs'
+                            : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        {m}%
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-[10px] text-slate-500">Exclusivo política institucional: 40%, 50%, 70%, 80%, 100%</span>
                 </div>
               </div>
 
@@ -1407,6 +1520,97 @@ export const GerenciaGeneralView: React.FC<GerenciaGeneralViewProps> = ({
               </div>
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Retorno de Proyecto a Gerencia Académica */}
+      {proyectoParaRetornar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-rose-200 overflow-hidden flex flex-col">
+            <div className="bg-rose-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-amber-300" />
+                <span className="text-sm font-black">Regresar a Gerencia Académica por Inconsistencia Financiera</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProyectoParaRetornar(null)}
+                className="text-rose-200 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-rose-900 space-y-1">
+                <span className="font-bold block text-[11px] uppercase tracking-wider">Flujo de Gobernanza Institucional</span>
+                <p className="text-[11px] leading-relaxed">
+                  Si la Gerencia General no ve bien la parte financiera del proyecto <strong>"{proyectoParaRetornar.nombreProyecto}"</strong> ({proyectoParaRetornar.codigoProyecto || proyectoParaRetornar.codigoPrograma || 'SIG-ACAD-2026-001'}), se regresa formalmente a la <strong>Gerencia Académica</strong> para su corrección de costos antes de enviarlo a Comercialización.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-[11px] font-bold text-slate-700">
+                  Motivo de Inconsistencia Financiera Observada:
+                </label>
+                <textarea
+                  rows={3}
+                  value={motivoRetornoGeneral}
+                  onChange={(e) => setMotivoRetornoGeneral(e.target.value)}
+                  placeholder="Describa la observación: ej. La tarifa por hora docente excede el tope o el margen de rentabilidad está por debajo del 25%..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                />
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-500 block">Observaciones frecuentes:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      'Tarifa docente excede el límite presupuestario',
+                      'Margen operativo proyectado insuficiente',
+                      'Costos operativos indirectos no justificados',
+                      'Ajustar horas prácticas y honorarios totales'
+                    ].map((motivo) => (
+                      <button
+                        key={motivo}
+                        type="button"
+                        onClick={() => setMotivoRetornoGeneral(motivo)}
+                        className="px-2 py-1 bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-900 rounded-md text-[10px] font-medium transition-colors cursor-pointer"
+                      >
+                        + {motivo}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 text-[11px] text-slate-600">
+                <div className="flex items-center justify-between">
+                  <span>Destino: <strong>Gerencia Académica</strong></span>
+                  <span>Responsable: <strong>Phd. Donal Reyes</strong></span>
+                </div>
+                <div>Aviso por Correo: <strong>{CREDENCIALES_GERENCIAS.academica.correo}</strong></div>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-100 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setProyectoParaRetornar(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                id="btn-confirmar-retorno-gg-view"
+                onClick={handleConfirmarRetornoAcademica}
+                className="px-5 py-2 bg-rose-700 hover:bg-rose-800 text-white font-black text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Confirmar y Devolver a Académica</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

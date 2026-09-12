@@ -5,11 +5,16 @@ import { ProyectoEducativo, Moneda } from '../types';
 import { formatearMoneda } from './calculations';
 import { obtenerClaveMesProyecto, formatearEtiquetaMes } from './monthUtils';
 import { subirReporteADrive } from '../services/googleDriveService';
+import { 
+  dibujarEscudoSummitJsPDF, 
+  agregarPieDePaginaOficialPDF, 
+  SUMMIT_BRANDING 
+} from './brandingUtils';
 
 export type TipoEscenario = 'conservador' | 'base' | 'optimista' | 'personalizado';
 
 export interface ParametrosProyeccion {
-  semestreObjetivo: string; // ej. '2027-S1' o '2026-S2'
+  semestreObjetivo: string; // ej. '2026-POA' (Septiembre - Diciembre 2026)
   crecimientoMatriculaPct: number; // e.g. 10.0 (%)
   inflacionGastosPct: number; // e.g. 5.5 (%)
   incrementoCostoDocentePct: number; // e.g. 7.0 (%)
@@ -158,9 +163,8 @@ export const ESCENARIOS_PREDEFINIDOS: Record<TipoEscenario, Omit<ParametrosProye
 };
 
 export const SEMESTRES_DISPONIBLES = [
-  { id: '2026-S2', label: 'II Semestre 2026 (Julio - Diciembre 2026)', meses: ['2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12'] },
-  { id: '2027-S1', label: 'I Semestre 2027 (Enero - Junio 2027)', meses: ['2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06'] },
-  { id: '2027-S2', label: 'II Semestre 2027 (Julio - Diciembre 2027)', meses: ['2027-07', '2027-08', '2027-09', '2027-10', '2027-11', '2027-12'] },
+  { id: '2026-POA', label: 'POA 2026 (Septiembre - Diciembre 2026)', meses: ['2026-09', '2026-10', '2026-11', '2026-12'] },
+  { id: '2026-Q4', label: 'Cierre POA 2026 (Octubre - Diciembre 2026)', meses: ['2026-10', '2026-11', '2026-12'] },
 ];
 
 /**
@@ -170,7 +174,7 @@ export function calcularProyeccionSemestral(
   proyectos: ProyectoEducativo[],
   params: ParametrosProyeccion
 ): AnalisisProyeccionSemestral {
-  const infoSemestre = SEMESTRES_DISPONIBLES.find(s => s.id === params.semestreObjetivo) || SEMESTRES_DISPONIBLES[1];
+  const infoSemestre = SEMESTRES_DISPONIBLES.find(s => s.id === params.semestreObjetivo) || SEMESTRES_DISPONIBLES[0];
   
   // 1. Establecer Base Histórica
   // Si hay proyectos históricos, calculamos la media semestral representativa
@@ -502,37 +506,46 @@ export async function exportarProyeccionPDF(
   const doc = new jsPDF('landscape', 'mm', 'a4');
   const nombreArchivo = `Proyeccion_Crecimiento_${analisis.semestreObjetivo}_${Date.now()}.pdf`;
 
-  // Encabezado
+  // Encabezado Oficial Estandarizado con Escudo
   doc.setFillColor(15, 23, 42); // slate-900
-  doc.rect(0, 0, 297, 24, 'F');
+  doc.rect(0, 0, 297, 26, 'F');
+  doc.setFillColor(37, 99, 235); // blue-600
+  doc.rect(0, 26, 297, 2, 'F');
+
+  // Escudo vectorial oficial
+  dibujarEscudoSummitJsPDF(doc, 22, 13, 8.5);
 
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text('SUMMIT IMPULSA GLOBAL - DIRECCIÓN FINANCIERA & GERENCIA GENERAL', 14, 11);
+  doc.text('SUMMIT IMPULSA GLOBAL', 33, 11);
 
-  doc.setFontSize(9);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
-  doc.text(`MODELO DE PROYECCIÓN DE CRECIMIENTO SEMESTRAL | ${analisis.etiquetaSemestre.toUpperCase()}`, 14, 18);
+  doc.setTextColor(191, 219, 254);
+  doc.text('Summit Impulsa S. de R.L. • RTN: 05019026435770 • San Pedro Sula, Cortés, Honduras', 33, 16);
+  doc.text(`DIRECCIÓN FINANCIERA & GERENCIA GENERAL • ${analisis.etiquetaSemestre.toUpperCase()}`, 33, 21);
 
   doc.setFontSize(8);
-  doc.text(`Generado: ${new Date().toLocaleString('es-HN')}`, 240, 18);
+  doc.setTextColor(226, 232, 240);
+  doc.text(`CÓD: PROY-SEM-${analisis.semestreObjetivo}`, 283, 11, { align: 'right' });
+  doc.text(`Moneda: ${moneda} | Generado: ${new Date().toLocaleDateString('es-HN')}`, 283, 16, { align: 'right' });
 
   // Parámetros de Simulación Utilizados
   doc.setFillColor(241, 245, 249); // slate-100
-  doc.roundedRect(14, 28, 269, 20, 2, 2, 'F');
+  doc.roundedRect(14, 30, 269, 18, 2, 2, 'F');
 
   doc.setTextColor(30, 41, 59);
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('PARÁMETROS DE SIMULACIÓN Y SENSIBILIDAD APLICADOS:', 18, 34);
+  doc.text('PARÁMETROS DE SIMULACIÓN Y SENSIBILIDAD APLICADOS:', 18, 35.5);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.text(`• Crecimiento Matrícula: ${analisis.parametros.crecimientoMatriculaPct >= 0 ? '+' : ''}${analisis.parametros.crecimientoMatriculaPct}%`, 18, 41);
-  doc.text(`• Inflación General / Gastos: +${analisis.parametros.inflacionGastosPct}% (BCH Ref.)`, 75, 41);
-  doc.text(`• Ajuste Costos Docentes: +${analisis.parametros.incrementoCostoDocentePct}% (Tarifas/Honorarios)`, 145, 41);
-  doc.text(`• Ajuste Arancel Alumno: ${analisis.parametros.ajustePrecioArancelPct >= 0 ? '+' : ''}${analisis.parametros.ajustePrecioArancelPct}%`, 225, 41);
+  doc.setFontSize(8);
+  doc.text(`• Crecimiento Matrícula: ${analisis.parametros.crecimientoMatriculaPct >= 0 ? '+' : ''}${analisis.parametros.crecimientoMatriculaPct}%`, 18, 42);
+  doc.text(`• Inflación General / Gastos: +${analisis.parametros.inflacionGastosPct}% (BCH Ref.)`, 75, 42);
+  doc.text(`• Ajuste Costos Docentes: +${analisis.parametros.incrementoCostoDocentePct}% (Tarifas/Honorarios)`, 145, 42);
+  doc.text(`• Ajuste Arancel Alumno: ${analisis.parametros.ajustePrecioArancelPct >= 0 ? '+' : ''}${analisis.parametros.ajustePrecioArancelPct}%`, 225, 42);
 
   // Resumen de KPIs Clave
   autoTable(doc, {
@@ -681,6 +694,12 @@ export async function exportarProyeccionPDF(
 
   doc.text('_____________________________________', 205, Math.min(finalY2 + 25, 195));
   doc.text('Gerencia Comercial & Matrícula', 215, Math.min(finalY2 + 30, 200));
+
+  // Pie de página oficial estandarizado en todas las páginas
+  agregarPieDePaginaOficialPDF(doc, {
+    codigo: `PROY-SEM-${analisis.semestreObjetivo}`,
+    gerencia: 'Gerencia General & Finanzas',
+  });
 
   // Guardar archivo localmente
   const pdfBlob = doc.output('blob');

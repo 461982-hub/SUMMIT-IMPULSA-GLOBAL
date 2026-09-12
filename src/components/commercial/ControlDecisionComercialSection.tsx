@@ -43,8 +43,9 @@ export const ControlDecisionComercialSection: React.FC<ControlDecisionComercialS
   // Fecha de hoy en formato YYYY-MM-DD
   const hoyStr = new Date().toISOString().slice(0, 10);
 
-  // Proyectos a evaluar
+  // Proyectos a evaluar (excluir sílabos base, pues son la estructura curricular y no proyectos en comercialización)
   const proyectosFiltrados = proyectos.filter((p) => {
+    if (p.esSilaboBase || p.tipoRegistro === 'silabo_base') return false;
     if (filtroProyectoId && p.id !== filtroProyectoId) return false;
 
     if (busquedaLocal) {

@@ -44,6 +44,7 @@ interface DocenteDirectoryModalProps {
   onClose: () => void;
   onSeleccionarDocente?: (docente: DocenteBanco) => void;
   moneda?: Moneda;
+  abrirEnCreacion?: boolean;
 }
 
 export const DocenteDirectoryModal: React.FC<DocenteDirectoryModalProps> = ({
@@ -51,6 +52,7 @@ export const DocenteDirectoryModal: React.FC<DocenteDirectoryModalProps> = ({
   onClose,
   onSeleccionarDocente,
   moneda = 'LPS',
+  abrirEnCreacion = false,
 }) => {
   const [docentes, setDocentes] = useState<DocenteBanco[]>([]);
   const [busqueda, setBusqueda] = useState('');
@@ -65,8 +67,23 @@ export const DocenteDirectoryModal: React.FC<DocenteDirectoryModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setDocentes(obtenerBancoDocentes());
+      if (abrirEnCreacion) {
+        setMostrarFormulario(true);
+        setDocenteEditando({
+          titulo: 'Licenciatura',
+          tarifaHoraSugerida: 200,
+          estadoSAR: 'Al Día',
+          especialidad: '',
+          email: '',
+          telefono: '',
+          nombre: ''
+        });
+      } else {
+        setMostrarFormulario(false);
+        setDocenteEditando(null);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, abrirEnCreacion]);
 
   const refrescar = () => {
     setDocentes(obtenerBancoDocentes());
@@ -87,11 +104,20 @@ export const DocenteDirectoryModal: React.FC<DocenteDirectoryModalProps> = ({
     e.preventDefault();
     if (!docenteEditando || !docenteEditando.nombre?.trim()) return;
 
-    guardarDocenteEnBanco(docenteEditando);
+    const guardado = guardarDocenteEnBanco(docenteEditando);
     refrescar();
     setDocenteEditando(null);
     setMostrarFormulario(false);
     setGuardadoExitoso(true);
+
+    if (onSeleccionarDocente && guardado) {
+      onSeleccionarDocente(guardado);
+      setTimeout(() => {
+        onClose();
+      }, 300);
+      return;
+    }
+
     setTimeout(() => setGuardadoExitoso(false), 2500);
   };
 
@@ -383,16 +409,21 @@ export const DocenteDirectoryModal: React.FC<DocenteDirectoryModalProps> = ({
 
                   {/* Detalle del PDF cargado o zona de carga y generación */}
                   {docenteEditando.cvPdfNombre ? (
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="p-3 bg-gradient-to-r from-blue-50/80 to-slate-50 rounded-xl border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-700 shrink-0 font-black text-xs">
+                        <div className="w-9 h-9 rounded-lg bg-blue-600 border border-blue-700 flex items-center justify-center text-white shrink-0 font-black text-xs shadow-xs">
                           PDF
                         </div>
                         <div className="min-w-0">
-                          <p className="font-bold text-slate-800 text-xs truncate max-w-xs sm:max-w-md">
-                            {docenteEditando.cvPdfNombre}
-                          </p>
-                          <p className="text-[10px] text-slate-500">
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-slate-900 text-xs truncate max-w-xs sm:max-w-md">
+                              {docenteEditando.cvPdfNombre}
+                            </p>
+                            <span className="text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-300">
+                              ✓ En Planilla
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
                             Tamaño: {docenteEditando.cvPdfTamano || 'Documento PDF'} • Fecha:{' '}
                             {docenteEditando.cvPdfFechaSubida || 'Hoy'}
                           </p>
@@ -404,11 +435,11 @@ export const DocenteDirectoryModal: React.FC<DocenteDirectoryModalProps> = ({
                           type="button"
                           id="btn-ver-cv-pdf-formulario"
                           onClick={() => setDocenteParaVerCv(docenteEditando as DocenteBanco)}
-                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                          title="Visualizar el CV en PDF"
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                          title="Visualizar el CV con la Planilla Oficial de la Empresa"
                         >
                           <Eye className="w-3.5 h-3.5" />
-                          <span>Ver CV (PDF)</span>
+                          <span>Ver CVPDF</span>
                         </button>
 
                         <button

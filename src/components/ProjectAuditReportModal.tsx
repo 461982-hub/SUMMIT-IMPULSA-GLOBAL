@@ -31,6 +31,8 @@ import {
   ResultadoReporteAuditoriaPDF 
 } from '../utils/projectAuditPdfReport';
 import { SummitLogo } from './SummitLogo';
+import { DocumentOfficialHeader } from './common/DocumentOfficialHeader';
+import { DocumentOfficialFooter } from './common/DocumentOfficialFooter';
 
 interface ProjectAuditReportModalProps {
   isOpen: boolean;
@@ -130,60 +132,40 @@ export const ProjectAuditReportModal: React.FC<ProjectAuditReportModalProps> = (
         id="modal-reporte-auditoria"
         className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:shadow-none print:border-none animate-in fade-in zoom-in-95 duration-150"
       >
-        {/* ENCABEZADO SUPERIOR */}
-        <div className="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950 text-white print:hidden">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-inner">
-              <ShieldCheck className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-400 text-slate-950">
-                  {codigoExpediente}
-                </span>
-                <span className="text-xs text-blue-300 font-semibold">
-                  Auditoría Individual de Proyecto
-                </span>
-              </div>
-              <h2 className="text-base font-bold text-white line-clamp-1 mt-0.5">
-                Reporte de Auditoría: {proyecto.nombreProyecto}
-              </h2>
-            </div>
-          </div>
+        {/* ENCABEZADO SUPERIOR OFICIAL ESTANDARIZADO */}
+        <DocumentOfficialHeader
+          gerencia="auditoria"
+          titulo="Informe de Auditoría y Trazabilidad"
+          subtitulo={proyecto.nombreProyecto}
+          codigoDocumento={codigoExpediente}
+          folioCorrelativo={String(proyecto.numeroCorrelativo || proyecto.id).padStart(3, '0')}
+          onClose={onClose}
+          actions={
+            <>
+              <button
+                id="btn-imprimir-auditoria"
+                type="button"
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors border border-slate-800"
+                title="Imprimir vista de pantalla"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Imprimir</span>
+              </button>
 
-          <div className="flex items-center gap-2 self-end sm:self-center">
-            <button
-              id="btn-imprimir-auditoria"
-              type="button"
-              onClick={() => window.print()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors border border-slate-800"
-              title="Imprimir vista de pantalla"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Imprimir</span>
-            </button>
-
-            <button
-              id="btn-descargar-auditoria-pdf"
-              type="button"
-              onClick={handleGenerarPDF}
-              disabled={generandoPDF}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              <span>{generandoPDF ? (progresoTexto || 'Generando...') : 'Descargar PDF Detallado'}</span>
-            </button>
-
-            <button
-              id="btn-cerrar-modal-auditoria"
-              type="button"
-              onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors ml-1"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
+              <button
+                id="btn-descargar-auditoria-pdf"
+                type="button"
+                onClick={handleGenerarPDF}
+                disabled={generandoPDF}
+                className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-all shadow-xs hover:shadow-md disabled:opacity-50 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{generandoPDF ? (progresoTexto || 'Generando...') : 'Descargar PDF'}</span>
+              </button>
+            </>
+          }
+        />
 
         {/* BARRA DE TABS / PESTAÑAS */}
         <div className="px-6 border-b border-slate-200 bg-slate-50 flex items-center gap-1 sm:gap-2 overflow-x-auto print:hidden">
@@ -802,34 +784,31 @@ export const ProjectAuditReportModal: React.FC<ProjectAuditReportModalProps> = (
           )}
         </div>
 
-        {/* PIE DE PÁGINA DEL MODAL */}
-        <div className="px-6 py-3.5 bg-slate-100 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 print:hidden">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-700">Expediente:</span>
-            <span className="font-mono">{codigoExpediente}</span>
-            <span>•</span>
-            <span>SAR: {proyecto.codigoFiscalSAR || 'N/A'}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-            >
-              Cerrar
-            </button>
-            <button
-              type="button"
-              onClick={handleGenerarPDF}
-              disabled={generandoPDF}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <FileCheck className="w-3.5 h-3.5" />
-              <span>{generandoPDF ? 'Generando PDF...' : 'Generar Reporte PDF'}</span>
-            </button>
-          </div>
-        </div>
+        {/* PIE DE PÁGINA DEL MODAL OFICIAL ESTANDARIZADO */}
+        <DocumentOfficialFooter
+          gerencia="auditoria"
+          codigoDocumento={codigoExpediente}
+          actions={
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={handleGenerarPDF}
+                disabled={generandoPDF}
+                className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <FileCheck className="w-3.5 h-3.5" />
+                <span>{generandoPDF ? 'Generando PDF...' : 'Generar Reporte PDF'}</span>
+              </button>
+            </div>
+          }
+        />
       </div>
     </div>
   );

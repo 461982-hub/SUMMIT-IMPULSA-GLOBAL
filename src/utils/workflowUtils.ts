@@ -236,23 +236,41 @@ export function obtenerNivelFlujo(p: ProyectoEducativo): NivelFlujoInfo {
       nivel: 4,
       titulo: 'Nivel 4: Aprobado & En Ejecución',
       tituloCorto: 'Aprobado Listo',
-      descripcion: 'Proyecto con dictamen favorable de Gerencia General. Descuenta facturación de la meta mensual del POA.',
+      descripcion: 'Proyecto con dictamen final favorable de Gerencia General. En ejecución operativa y facturación.',
       color: 'indigo',
       bgLight: 'bg-indigo-50',
       borderClass: 'border-indigo-300',
       badgeClass: 'bg-indigo-100 text-indigo-900 border-indigo-300',
       gerenciaActual: 'Dirección General & Operaciones',
-      responsableActual: p.aprobadoPorGerenciaGeneral || 'Dr. Walter Pedroza - Gerencia General',
+      responsableActual: typeof p.aprobadoPorGerenciaGeneral === 'string' 
+        ? p.aprobadoPorGerenciaGeneral 
+        : 'Dr. Walter Pedroza - Gerencia General',
     };
   }
 
-  // Nivel 3: En Gerencia General para dictamen
-  if (p.etapaFlujo === 'dictamen_general' || p.autorizacionComercial || p.comercializacionCompletada) {
+  // Nivel 3: En Gerencia de Comercialización (aprobado previamente por GG)
+  if (p.etapaFlujo === 'comercializacion' || p.aprobadoPorGerenciaGeneralPrevia || p.fechaEnvioComercializacion) {
     return {
       nivel: 3,
-      titulo: 'Nivel 3: Dictamen Gerencia General',
-      tituloCorto: 'En Dictamen GG',
-      descripcion: 'Comercialización completada. Pendiente de auditoría de cumplimiento y aprobación ejecutiva final.',
+      titulo: 'Nivel 3: Gerencia de Comercialización',
+      tituloCorto: 'En Comercialización',
+      descripcion: 'Aprobado por Gerencia General. En campaña de venta, captación de prospectos, cotizaciones y matrícula.',
+      color: 'emerald',
+      bgLight: 'bg-emerald-50',
+      borderClass: 'border-emerald-300',
+      badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+      gerenciaActual: 'Gerencia de Comercialización',
+      responsableActual: p.responsableComercial || 'Lic. Carlos Mendoza - Comercialización',
+    };
+  }
+
+  // Nivel 2: En Gerencia General para Revisión y Aprobación (Nuevo flujo oficial)
+  if (p.etapaFlujo === 'revision_gerencia_general' || p.etapaFlujo === 'dictamen_general' || p.autorizacionAcademica) {
+    return {
+      nivel: 2,
+      titulo: 'Nivel 2: Revisión y Aprobación Gerencia General',
+      tituloCorto: 'Revisión Gerencia General',
+      descripcion: 'Sílabo formalizado con correlativos Empresa y SAR. En revisión ejecutiva por Gerencia General previo a comercialización.',
       color: 'purple',
       bgLight: 'bg-purple-50',
       borderClass: 'border-purple-300',
@@ -262,34 +280,18 @@ export function obtenerNivelFlujo(p: ProyectoEducativo): NivelFlujoInfo {
     };
   }
 
-  // Nivel 2: En Gerencia de Comercialización
-  if (p.etapaFlujo === 'comercializacion' || p.autorizacionAcademica || p.seLlevoACabo === 'Planificado' || p.seLlevoACabo === 'En proceso') {
-    return {
-      nivel: 2,
-      titulo: 'Nivel 2: Comercialización Activa',
-      tituloCorto: 'En Comercialización',
-      descripcion: 'Diseño académico completado. En captación de matrícula, campañas de pauta y cierre de ventas.',
-      color: 'emerald',
-      bgLight: 'bg-emerald-50',
-      borderClass: 'border-emerald-300',
-      badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300',
-      gerenciaActual: 'Gerencia de Comercialización',
-      responsableActual: p.responsableComercial || 'Lic. Carlos Mendoza',
-    };
-  }
-
   // Nivel 1: Elaboración en Gerencia Académica
   return {
     nivel: 1,
-    titulo: 'Nivel 1: Elaboración Académica',
-    tituloCorto: 'Diseño Académico',
-    descripcion: 'En estructuración curricular, selección docente, cálculo de horas y presupuestos operativos.',
+    titulo: 'Nivel 1: Elaboración Académica (Sílabo Oficial)',
+    tituloCorto: 'Sílabo en Académica',
+    descripcion: 'Diseño pedagógico del Sílabo Oficial, honorarios docentes, gastos operativos y correlativos institucionales.',
     color: 'blue',
     bgLight: 'bg-blue-50',
     borderClass: 'border-blue-300',
     badgeClass: 'bg-blue-100 text-blue-900 border-blue-300',
     gerenciaActual: 'Gerencia Académica',
-    responsableActual: p.responsableAcademico || 'MSc. Elena Rostrán',
+    responsableActual: p.responsableAcademico || 'Phd. Donal Reyes - Gerencia Académica',
   };
 }
 

@@ -7,7 +7,7 @@
  */
 
 import { ProyectoEducativo, Moneda } from '../types';
-import { POA_2027_DATOS } from './poa2027Data';
+import { POA_2026_DATOS } from './poa2026Data';
 
 export interface ComparativaMetrica {
   concepto: string;
@@ -99,7 +99,7 @@ export function calcularComparativaPOAVsRealidad(
   proyectos: ProyectoEducativo[],
   monedaApp: Moneda | string = 'LPS'
 ): ComparativaPOAResultado {
-  const { resumen, presupuestosGerencias } = POA_2027_DATOS;
+  const { resumen, presupuestosGerencias } = POA_2026_DATOS;
   const TIPO_CAMBIO = resumen.tipoCambio; // 27.00 L/USD
   const metaEgresos = resumen.egresosOperativos || 337224.90;
 

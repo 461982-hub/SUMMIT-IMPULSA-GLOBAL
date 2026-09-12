@@ -68,7 +68,7 @@ export const GrowthProjectionTool: React.FC<GrowthProjectionToolProps> = ({
   onNotificar,
 }) => {
   // Parámetros de simulación
-  const [semestreObjetivo, setSemestreObjetivo] = useState<string>('2027-S1');
+  const [semestreObjetivo, setSemestreObjetivo] = useState<string>('2026-POA');
   const [escenarioActivo, setEscenarioActivo] = useState<TipoEscenario>('base');
   
   const [crecimientoMatriculaPct, setCrecimientoMatriculaPct] = useState<number>(10.0);

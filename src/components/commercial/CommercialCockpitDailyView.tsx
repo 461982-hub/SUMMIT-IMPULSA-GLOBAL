@@ -20,7 +20,9 @@ import {
   Layers,
   Sparkles,
   Phone,
-  FileText
+  FileText,
+  ShieldCheck,
+  ArrowRight
 } from 'lucide-react';
 import { CommercialGoNoGoWidget } from './CommercialGoNoGoWidget';
 
@@ -34,6 +36,7 @@ interface CommercialCockpitDailyViewProps {
   onAjustarAlumnosFinales: (proyecto: ProyectoEducativo, delta: number) => void;
   onEditarProyecto: (proyecto: ProyectoEducativo) => void;
   onVerDetalle: (proyecto: ProyectoEducativo) => void;
+  onAutorizarComercial?: (proyecto: ProyectoEducativo) => void;
 }
 
 export const CommercialCockpitDailyView: React.FC<CommercialCockpitDailyViewProps> = ({
@@ -46,6 +49,7 @@ export const CommercialCockpitDailyView: React.FC<CommercialCockpitDailyViewProp
   onAjustarAlumnosFinales,
   onEditarProyecto,
   onVerDetalle,
+  onAutorizarComercial,
 }) => {
   const [busqueda, setBusqueda] = useState('');
 
@@ -254,6 +258,28 @@ export const CommercialCockpitDailyView: React.FC<CommercialCockpitDailyViewProp
                     {/* Botones de acción directa */}
                     <td className="p-2.5 text-right">
                       <div className="inline-flex items-center gap-1.5">
+                        {onAutorizarComercial && (
+                          p.autorizacionComercial ? (
+                            <span 
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[10px] font-extrabold whitespace-nowrap"
+                              title="Autorizado por Gerencia Comercial y remitido a Gerencia General"
+                            >
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <span>En Gerencia General</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => onAutorizarComercial(p)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white rounded-lg text-[11px] font-black shadow-xs transition-all cursor-pointer whitespace-nowrap"
+                              title="Paso 2: Autorizar proceso comercial y remitir a Gerencia General para revisión final y deducción del POA 2026"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <span>Autorizar y Enviar a GG</span>
+                            </button>
+                          )
+                        )}
+
                         <button
                           type="button"
                           onClick={() => onAbrirMatriculaRapida(p)}

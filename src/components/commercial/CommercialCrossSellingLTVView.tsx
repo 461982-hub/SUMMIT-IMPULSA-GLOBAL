@@ -20,6 +20,7 @@ import {
   Save,
   Compass,
   Star,
+  Plus,
 } from 'lucide-react';
 
 interface CommercialCrossSellingLTVViewProps {

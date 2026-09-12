@@ -55,7 +55,7 @@ interface PresetProyecto {
 
 const PRESETS_REALES: PresetProyecto[] = [
   {
-    titulo: 'Curso Estándar 20h',
+    titulo: 'Curso Básico 12h',
     badge: '15% ISV',
     icono: '🎓',
     nombre: 'Curso de Excel Financiero & Modelaje',
@@ -64,7 +64,7 @@ const PRESETS_REALES: PresetProyecto[] = [
     tipo: 'Servicios educativos no acreditados (talleres, cursos libres)',
     nivel: 'Básico',
     servicioFiscal: 'Servicios educativos no acreditados (talleres, cursos libres)',
-    horas: 20,
+    horas: 12,
     tarifaHora: 200,
     zoom: 300,
     papeleria: 100,
@@ -278,7 +278,7 @@ export const QuickSimulatorModal: React.FC<QuickSimulatorModalProps> = ({
     onClose();
   };
 
-  const margenesPredefinidos = [40, 50, 70, 90, 100];
+  const margenesPredefinidos = [40, 50, 70, 80, 100];
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
@@ -429,10 +429,16 @@ export const QuickSimulatorModal: React.FC<QuickSimulatorModalProps> = ({
                       </label>
                       <select
                         value={nivel}
-                        onChange={(e) => setNivel(e.target.value as NivelProyecto)}
+                        onChange={(e) => {
+                          const nuevoNivel = e.target.value as NivelProyecto;
+                          setNivel(nuevoNivel);
+                          if (nuevoNivel === 'Básico') {
+                            setHorasClase(12);
+                          }
+                        }}
                         className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-medium"
                       >
-                        <option value="Básico">Básico</option>
+                        <option value="Básico">Básico (Auto: 12 horas - Norma)</option>
                         <option value="Intermedio">Intermedio</option>
                         <option value="Avanzado">Avanzado</option>
                         <option value="Todos los niveles">Todos los niveles</option>
@@ -484,9 +490,16 @@ export const QuickSimulatorModal: React.FC<QuickSimulatorModalProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Horas de Clase Totales
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Horas de Clase Totales
+                      </label>
+                      {nivel === 'Básico' && (
+                        <span className="text-[10px] font-black text-blue-800 bg-blue-100 border border-blue-200 px-1.5 py-0.2 rounded">
+                          ⚡ 12h Norma Básica
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="number"
                       min="1"
@@ -591,13 +604,29 @@ export const QuickSimulatorModal: React.FC<QuickSimulatorModalProps> = ({
 
                   <input
                     type="range"
-                    min="10"
-                    max="150"
-                    step="5"
-                    value={margenGananciaOperativa}
-                    onChange={(e) => setMargenGananciaOperativa(Number(e.target.value))}
+                    min={0}
+                    max={margenesPredefinidos.length - 1}
+                    step={1}
+                    value={(() => {
+                      const idx = margenesPredefinidos.indexOf(margenGananciaOperativa);
+                      return idx !== -1 ? idx : 0;
+                    })()}
+                    onChange={(e) => {
+                      const idx = Number(e.target.value);
+                      setMargenGananciaOperativa(margenesPredefinidos[idx]);
+                    }}
                     className="w-full accent-blue-600 cursor-pointer"
                   />
+                  <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-0.5 px-0.5">
+                    {margenesPredefinidos.map((m) => (
+                      <span 
+                        key={m} 
+                        className={margenGananciaOperativa === m ? 'text-blue-700 font-black' : ''}
+                      >
+                        {m}%
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

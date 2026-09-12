@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BookOpen, 
   GraduationCap, 
@@ -45,6 +45,10 @@ import {
   Printer,
   CheckSquare2,
   Zap,
+  Trash2,
+  ArrowRight,
+  X,
+  Bell,
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda, TipoProyecto, NivelProyecto, EstadoProyecto, TipoServicioFiscal } from '../types';
 import { formatearMoneda, calcularMetricasProyecto } from '../utils/calculations';
@@ -73,27 +77,35 @@ import { AcademicDocenteRoiDesercionView } from './academic/AcademicDocenteRoiDe
 import { OfficialSyllabusModal } from './academic/OfficialSyllabusModal';
 import { DocenteDirectoryModal } from './academic/DocenteDirectoryModal';
 import { CurricularMadurezChecklistModal } from './academic/CurricularMadurezChecklistModal';
-import { DuplicateProjectModal } from './academic/DuplicateProjectModal';
 import { AcademicScheduleCalendarView } from './academic/AcademicScheduleCalendarView';
 import { AcademicPOAAlertBanner } from './academic/AcademicPOAAlertBanner';
 import { QuickCurricularTemplatesBar } from './academic/QuickCurricularTemplatesBar';
 import { AcademicQuickBatchActionsBar } from './academic/AcademicQuickBatchActionsBar';
 import { evaluarMadurezCurricular } from '../utils/curricularMadurezUtils';
 import { SmartProjectSearchBar, coincideBusquedaInteligente, CriterioBusqueda } from './SmartProjectSearchBar';
+import { AcademicCreatedProjectsView, esProyectoCreadoPorAcademica } from './academic/AcademicCreatedProjectsView';
+import { obtenerTodosLosSilabos, eliminarSilaboDeStorage } from '../utils/silaboCatalogUtils';
+import { obtenerBancoDocentes } from '../utils/docenteDirectoryUtils';
+import { ProjectNoticesWorkflowSection } from './workflow/ProjectNoticesWorkflowSection';
 
 interface GerenciaAcademicaViewProps {
   proyectos: ProyectoEducativo[];
   moneda: Moneda;
   onEditarProyecto: (p: ProyectoEducativo) => void;
   onVerDetalle: (p: ProyectoEducativo) => void;
-  onNuevoProyecto: () => void;
-  onGuardarProyecto: (p: ProyectoEducativo) => void;
+  onNuevoProyecto?: () => void;
+  onGuardarProyecto: (p: ProyectoEducativo, origen?: string) => void;
   onEliminarProyecto?: (p: ProyectoEducativo) => void;
+  onEliminarMultiples?: (ids: string[]) => void;
   onAbrirWorkflowStatusModal?: (proyectoId?: string) => void;
   onNotificar?: (mensaje: string) => void;
+  subPestanaInicial?: SubPestanaAcademica;
+  onCambiarSubPestana?: (pestana: SubPestanaAcademica) => void;
 }
 
-type SubPestanaAcademica = 
+export type SubPestanaAcademica = 
+  | 'avisos_proyectos'
+  | 'proyectos_creados'
   | 'tablero_calidad'
   | 'catalogo' 
   | 'mapa_calor_riesgo'
@@ -126,10 +138,31 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
   onNuevoProyecto,
   onGuardarProyecto,
   onEliminarProyecto,
+  onEliminarMultiples,
   onAbrirWorkflowStatusModal,
   onNotificar,
+  subPestanaInicial,
+  onCambiarSubPestana,
 }) => {
-  const [subPestana, setSubPestana] = useState<SubPestanaAcademica>('catalogo');
+  const [subPestana, setSubPestanaState] = useState<SubPestanaAcademica>(subPestanaInicial || 'catalogo');
+
+  const setSubPestana = (nuevaPestana: SubPestanaAcademica) => {
+    setSubPestanaState(nuevaPestana);
+    onCambiarSubPestana?.(nuevaPestana);
+  };
+
+  useEffect(() => {
+    if (subPestanaInicial) {
+      setSubPestanaState(subPestanaInicial);
+    }
+  }, [subPestanaInicial]);
+
+  const [proyectoABorrarDirecto, setProyectoABorrarDirecto] = useState<ProyectoEducativo | null>(null);
+
+  const totalProyectosCreadosAcademica = useMemo(() => {
+    return proyectos.filter(esProyectoCreadoPorAcademica).length;
+  }, [proyectos]);
+
   const [busqueda, setBusqueda] = useState('');
   const [criterioBusqueda, setCriterioBusqueda] = useState<CriterioBusqueda>('todos');
   const [filtroTipo, setFiltroTipo] = useState<string>('todos');
@@ -140,22 +173,104 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
   // Proyecto en edición rápida académica
   const [proyectoEditando, setProyectoEditando] = useState<ProyectoEducativo | null>(null);
   
-  // Proyecto seleccionado para ver/editar Syllabus
-  const [programaSyllabusSeleccionado, setProgramaSyllabusSeleccionado] = useState<ProyectoEducativo | null>(
-    proyectos.length > 0 ? proyectos[0] : null
-  );
+  // Versión para forzar re-render cuando se actualicen los sílabos en almacenamiento
+  const [versionSilabos, setVersionSilabos] = useState(0);
+
+  useEffect(() => {
+    const handler = () => {
+      setVersionSilabos((v) => v + 1);
+    };
+    window.addEventListener('summit_silabos_actualizados', handler);
+    return () => window.removeEventListener('summit_silabos_actualizados', handler);
+  }, []);
+
+  // Sílabos creados en la sección de Sílabo PDF (exclusivamente los creados)
+  const silabosCreados = useMemo(() => {
+    return obtenerTodosLosSilabos(proyectos);
+  }, [proyectos, versionSilabos]);
+
+  // Proyecto/Sílabo seleccionado para ver/editar Syllabus
+  const [programaSyllabusSeleccionado, setProgramaSyllabusSeleccionado] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (silabosCreados.length > 0) {
+      const existeActual = programaSyllabusSeleccionado && silabosCreados.some(
+        s => s.id === programaSyllabusSeleccionado.id || (s.codigoPrograma && s.codigoPrograma === programaSyllabusSeleccionado.codigoPrograma)
+      );
+      if (!existeActual) {
+        const primero = silabosCreados[0];
+        const match = proyectos.find(p => p.id === primero.id || (p.codigoPrograma && p.codigoPrograma === primero.codigoPrograma) || (p.codigoProyecto && p.codigoProyecto === primero.codigoPrograma));
+        setProgramaSyllabusSeleccionado(match ? { ...primero, ...match } : primero);
+      }
+    } else {
+      setProgramaSyllabusSeleccionado(null);
+    }
+  }, [silabosCreados, proyectos]);
+
+  // Estado para confirmación de eliminación de sílabo
+  const [silaboABorrar, setSilaboABorrar] = useState<any | null>(null);
+
+  const handleConfirmarEliminarSilabo = () => {
+    if (!silaboABorrar) return;
+    const id = silaboABorrar.id;
+    const codigoPrograma = silaboABorrar.codigoPrograma || silaboABorrar.codigoProyecto;
+    const nombre = silaboABorrar.nombreProyecto || 'Sílabo Oficial';
+
+    // 1. Eliminar de almacenamiento local persistente
+    eliminarSilaboDeStorage(id);
+    if (codigoPrograma) {
+      eliminarSilaboDeStorage(codigoPrograma);
+    }
+
+    // 2. Si existe en la matriz general de proyectos, removerlo
+    const proyectoEncontrado = proyectos.find(
+      (p) => p.id === id || (codigoPrograma && (p.codigoPrograma === codigoPrograma || p.codigoProyecto === codigoPrograma))
+    );
+    if (proyectoEncontrado && onEliminarProyecto) {
+      onEliminarProyecto(proyectoEncontrado);
+    }
+
+    // 3. Forzar recomputación del catálogo
+    setVersionSilabos((v) => v + 1);
+
+    // 4. Actualizar programa seleccionado
+    const restantes = silabosCreados.filter(
+      (s) => s.id !== id && (!codigoPrograma || s.codigoPrograma !== codigoPrograma)
+    );
+    if (restantes.length > 0) {
+      const siguiente = restantes[0];
+      const match = proyectos.find(p => p.id === siguiente.id || (p.codigoPrograma && p.codigoPrograma === siguiente.codigoPrograma));
+      setProgramaSyllabusSeleccionado(match ? { ...siguiente, ...match } : siguiente);
+    } else {
+      setProgramaSyllabusSeleccionado(null);
+    }
+
+    setSilaboABorrar(null);
+
+    if (onNotificar) {
+      onNotificar(`Sílabo Oficial "${nombre}" eliminado del catálogo.`);
+    }
+  };
+
+  // Control para mostrar herramientas secundarias (manteniendo lo básico por defecto para 1 operador)
+  const [mostrarSubpestanasAvanzadas, setMostrarSubpestanasAvanzadas] = useState(false);
 
   // Estados de control para las 6 Mejoras de Gerencia Académica
   const [syllabusModalAbierto, setSyllabusModalAbierto] = useState(false);
   const [proyectoSyllabusModal, setProyectoSyllabusModal] = useState<ProyectoEducativo | null>(null);
+  const [syllabusModoInicial, setSyllabusModoInicial] = useState<'vista' | 'crear'>('vista');
+
+  // Abrir Sílabo Oficial para diseñar y registrar como Proyecto Institucional
+  const handleAbrirNuevoSilaboProyecto = () => {
+    setProyectoSyllabusModal(null);
+    setSyllabusModoInicial('crear');
+    setSyllabusModalAbierto(true);
+  };
 
   const [docenteDirectoryModalAbierto, setDocenteDirectoryModalAbierto] = useState(false);
 
   const [madurezChecklistModalAbierto, setMadurezChecklistModalAbierto] = useState(false);
   const [proyectoMadurezModal, setProyectoMadurezModal] = useState<ProyectoEducativo | null>(null);
-
-  const [duplicateModalAbierto, setDuplicateModalAbierto] = useState(false);
-  const [proyectoDuplicar, setProyectoDuplicar] = useState<ProyectoEducativo | null>(null);
 
   // Lista de docentes únicos y estadísticas por docente
   const statsDocentes = useMemo(() => {
@@ -356,7 +471,7 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
               <span>Operaciones Académicas en 1 Clic</span>
             </span>
             <span className="text-xs text-blue-200/80 hidden xl:inline">
-              Formulación curricular, directorio docente, sílabos PDF y checklist de entrega
+              Formulación curricular, directorio docente, sílabos oficiales y checklist de entrega
             </span>
           </div>
 
@@ -370,20 +485,6 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
             >
               <Users className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
               <span>Banco Docentes</span>
-            </button>
-
-            <button
-              type="button"
-              id="btn-abrir-silabo-pdf-hero"
-              onClick={() => {
-                setProyectoSyllabusModal(programaSyllabusSeleccionado || proyectos[0] || null);
-                setSyllabusModalAbierto(true);
-              }}
-              className="flex-1 sm:flex-none px-3.5 py-2 bg-indigo-800/80 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors border border-indigo-500/40 cursor-pointer"
-              title="Generar y previsualizar Sílabo Oficial en PDF con membrete institucional"
-            >
-              <Printer className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
-              <span>Sílabo PDF</span>
             </button>
 
             <button
@@ -416,12 +517,12 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
             <button
               type="button"
               id="btn-crear-programa-academico"
-              onClick={onNuevoProyecto}
+              onClick={handleAbrirNuevoSilaboProyecto}
               className="flex-1 sm:flex-none px-4 py-2 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.02] border border-emerald-300 cursor-pointer"
-              title="Crear y formular un nuevo programa académico oficial (Exclusivo Gerencia Académica)"
+              title="Diseñar nuevo Sílabo Oficial (Proyecto) con correlativo automático Empresa & SAR"
             >
               <Plus className="w-3.5 h-3.5 text-slate-950 stroke-[3] shrink-0" />
-              <span>Nuevo Proyecto / Programa</span>
+              <span>+ Crear Sílabo Oficial</span>
             </button>
           </div>
         </div>
@@ -495,300 +596,332 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
       <AcademicPOAAlertBanner
         totalProyectos={proyectos.length}
         proyectos={proyectos}
-        onNuevoProyecto={onNuevoProyecto}
       />
 
-      {/* Controles de Rentabilidad y Valores de Referencia POA 2026 */}
-      <QuickCurricularTemplatesBar
-        proyectos={proyectos}
-        onCrearProyecto={onGuardarProyecto}
-        onEditarProyecto={onEditarProyecto}
-        onNuevoProyecto={onNuevoProyecto}
-        onAbrirSyllabusModal={(p) => {
-          setProyectoSyllabusModal(p || null);
-          setSyllabusModalAbierto(true);
-        }}
-        moneda={moneda}
-        totalProyectosActuales={proyectos.length}
-      />
+      {/* GUÍA DE FLUJO ÁGIL PARA 1 OPERADOR: DOCENTES -> SÍLABOS -> PROYECTOS */}
+      <div className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-800">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                Flujo Operativo Integrado
+              </span>
+              <span className="text-xs text-slate-400">
+                Gestión Centralizada para 1 Operador
+              </span>
+            </div>
+            <h2 className="text-base sm:text-lg font-black tracking-tight text-white">
+              Paso 1: Registra Docentes &bull; Paso 2: Diseña Sílabo Oficial &bull; Paso 3: Aprobación y Comercialización
+            </h2>
+            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+              Registre sus facilitadores en el Directorio y diseñe los Sílabos Oficiales con correlativo automático Empresa &amp; SAR. Al guardarse, se remite a Gerencia General para aprobación y luego a Comercialización.
+            </p>
+          </div>
 
-      {/* Barra de Operaciones Académicas Rápidas en 1 Clic (Syllabus, Rúbricas, Traspaso a Comercialización) */}
-      <AcademicQuickBatchActionsBar
-        proyectos={proyectos}
-        moneda={moneda}
-        onGuardarProyecto={onGuardarProyecto}
-        onNotificar={onNotificar}
-        onAbrirWorkflowStatusModal={onAbrirWorkflowStatusModal}
-      />
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              id="btn-flujo-docentes"
+              type="button"
+              onClick={() => setDocenteDirectoryModalAbierto(true)}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Users className="w-4 h-4 text-blue-400" />
+              <span>1. Directorio Docentes</span>
+            </button>
+
+            <button
+              id="btn-flujo-crear-silabo"
+              type="button"
+              onClick={handleAbrirNuevoSilaboProyecto}
+              className="px-4 py-2 rounded-xl text-xs font-black text-slate-950 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 shadow-md transition-all flex items-center gap-1.5 cursor-pointer hover:scale-[1.02]"
+              title="Diseñar nuevo Sílabo Oficial con correlativos automáticos Empresa y SAR"
+            >
+              <Plus className="w-4 h-4 text-slate-950 stroke-[2.5]" />
+              <span>2. + Crear Sílabo Oficial</span>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Sub-navegación de la Gerencia Académica Expandida */}
       <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100/90 rounded-xl border border-slate-200 text-xs">
+        {/* SUBPESTAÑA DE AVISOS DE PROYECTOS & NOTIFICACIONES (NUEVO FLUJO INSTITUCIONAL) */}
         <button
-          id="btn-subpestana-tablero-calidad"
-          onClick={() => setSubPestana('tablero_calidad')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-all ${
-            subPestana === 'tablero_calidad'
-              ? 'bg-blue-600 text-white shadow-xs border border-blue-500 ring-2 ring-blue-400 font-black'
-              : 'text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200'
+          id="btn-subpestana-avisos-proyectos"
+          type="button"
+          onClick={() => setSubPestana('avisos_proyectos')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-bold transition-all cursor-pointer ${
+            subPestana === 'avisos_proyectos'
+              ? 'bg-amber-600 text-white shadow-md border border-amber-500 ring-2 ring-amber-400 font-black'
+              : 'text-amber-950 bg-amber-50 hover:bg-amber-100 border border-amber-200'
           }`}
+          title="Sección de Avisos de Proyectos y Notificaciones por Correo a las Gerencias"
         >
-          <Award className="w-3.5 h-3.5 text-amber-400 fill-amber-300" />
-          <span>Tablero de Calidad</span>
+          <Bell className="w-4 h-4 text-amber-500" />
+          <span>🔔 Avisos de Proyectos & Correos</span>
         </button>
 
+        {/* SUBPESTAÑA PRINCIPAL: VER TODOS LOS PROYECTOS CREADOS POR GERENCIA ACADÉMICA */}
         <button
+          id="btn-subpestana-proyectos-creados"
+          type="button"
+          onClick={() => setSubPestana('proyectos_creados')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-bold transition-all ${
+            subPestana === 'proyectos_creados'
+              ? 'bg-gradient-to-r from-indigo-700 to-indigo-900 text-white shadow-md border border-indigo-600 ring-2 ring-indigo-400 font-black'
+              : 'text-indigo-950 bg-indigo-50/90 hover:bg-indigo-100 border border-indigo-200'
+          }`}
+        >
+          <GraduationCap className="w-4 h-4 text-indigo-400" />
+          <span>📁 Proyectos Creados por Académica</span>
+          <span className="ml-0.5 px-1.5 py-0.2 bg-white/20 text-white rounded text-[10px] font-mono font-black">
+            {totalProyectosCreadosAcademica}
+          </span>
+        </button>
+
+        {/* SUBPESTAÑA 2: SÍLABOS OFICIALES (SYLLABUS) */}
+        <button
+          id="btn-subpestana-syllabus"
+          type="button"
+          onClick={() => setSubPestana('syllabus')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-bold transition-all cursor-pointer ${
+            subPestana === 'syllabus'
+              ? 'bg-purple-700 text-white shadow-md border border-purple-600 ring-2 ring-purple-400 font-black'
+              : 'text-purple-950 bg-purple-50 hover:bg-purple-100 border border-purple-200'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-purple-400" />
+          <span>📄 Sílabos Oficiales (Syllabus)</span>
+          <span className="ml-0.5 px-1.5 py-0.2 bg-purple-200 text-purple-900 rounded text-[10px] font-mono font-black">
+            {silabosCreados.length}
+          </span>
+        </button>
+
+        {/* SUBPESTAÑA 3: CUERPO DOCENTE */}
+        <button
+          id="btn-subpestana-docentes"
+          type="button"
+          onClick={() => setSubPestana('docentes')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-bold transition-all cursor-pointer ${
+            subPestana === 'docentes'
+              ? 'bg-blue-700 text-white shadow-md border border-blue-600 ring-2 ring-blue-400 font-black'
+              : 'text-blue-950 bg-blue-50 hover:bg-blue-100 border border-blue-200'
+          }`}
+        >
+          <Users className="w-4 h-4 text-blue-400" />
+          <span>👨‍🏫 Cuerpo Docente</span>
+          <span className="ml-0.5 px-1.5 py-0.2 bg-blue-200 text-blue-900 rounded text-[10px] font-mono font-black">
+            {statsDocentes.length}
+          </span>
+        </button>
+
+        {/* SUBPESTAÑA 4: CATÁLOGO CURRICULAR */}
+        <button
+          id="btn-subpestana-catalogo"
+          type="button"
           onClick={() => setSubPestana('catalogo')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-bold transition-colors cursor-pointer ${
             subPestana === 'catalogo'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
+              ? 'bg-white text-blue-900 shadow-xs border border-slate-300 ring-1 ring-blue-400 font-black'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
           }`}
         >
           <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-          <span>Catálogo Curricular</span>
+          <span>📋 Catálogo Curricular</span>
         </button>
 
+        {/* BOTÓN DESPLEGABLE DE MÓDULOS AVANZADOS (OCULTOS POR DEFECTO PARA 1 PERSONA) */}
         <button
-          onClick={() => setSubPestana('mapa_calor_riesgo')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'mapa_calor_riesgo'
-              ? 'bg-rose-600 text-white shadow-xs border border-rose-500 ring-2 ring-rose-400 font-black'
-              : 'text-rose-700 bg-rose-50/80 hover:bg-rose-100 border border-rose-200'
-          }`}
+          id="btn-toggle-modulos-avanzados"
+          type="button"
+          onClick={() => setMostrarSubpestanasAvanzadas(!mostrarSubpestanasAvanzadas)}
+          className="ml-auto flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 transition-colors cursor-pointer"
         >
-          <Flame className="w-3.5 h-3.5 text-rose-500 fill-rose-400" />
-          <span>🔥 Mapa de Calor de Riesgo</span>
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          <span>{mostrarSubpestanasAvanzadas ? 'Ocultar Módulos Opcionales' : 'Más Módulos (Opcionales)...'}</span>
         </button>
 
-        <button
-          onClick={() => setSubPestana('carga_academica')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'carga_academica'
-              ? 'bg-white text-indigo-950 shadow-xs border border-indigo-300 ring-1 ring-indigo-400 font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <BarChart3 className="w-3.5 h-3.5 text-indigo-600" />
-          <span>📊 Distribución de Carga (Ocupadas vs Disponibles)</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('docentes')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'docentes'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Users className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Cuerpo Docente ({statsDocentes.length})</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('historial_docente')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'historial_docente'
-              ? 'bg-white text-indigo-950 shadow-xs border border-indigo-300 ring-1 ring-indigo-400'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-          <span>⭐ Historial de Rendimiento & Feedback</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('calendario_docente')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'calendario_docente'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200 ring-1 ring-indigo-400'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
-          <span>📅 Calendario & Carga Docente</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('calendario_aperturas')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'calendario_aperturas'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200 ring-2 ring-cyan-400 font-black'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Calendar className="w-3.5 h-3.5 text-cyan-600" />
-          <span>🗓️ Calendario de Aperturas & Fechas</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('syllabus')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'syllabus'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <FileText className="w-3.5 h-3.5 text-purple-600" />
-          <span>Planes de Estudio (Syllabus) & PDF</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('evaluacion')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'evaluacion'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Award className="w-3.5 h-3.5 text-amber-600" />
-          <span>Rúbricas & Criterios de Aprobación</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('recursos')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'recursos'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Laptop className="w-3.5 h-3.5 text-blue-600" />
-          <span>Aulas Virtuales & Recursos</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('certificacion')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'certificacion'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <GraduationCap className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Certificación & Diplomas (QR)</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('cronograma')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'cronograma'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Cronograma & Sesiones</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('gradebook')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'gradebook'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Award className="w-3.5 h-3.5 text-blue-600" />
-          <span>Actas & Calificaciones (Gradebook)</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('asistencia')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'asistencia'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Users className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Control de Asistencia & Alerta</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('docente_nps')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'docente_nps'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Award className="w-3.5 h-3.5 text-purple-600" />
-          <span>Evaluación Docente (NPS)</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('convenios_capstones')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'convenios_capstones'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <GraduationCap className="w-3.5 h-3.5 text-amber-600" />
-          <span>Convenios & Banco de Proyectos</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('aforo_requisitos')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'aforo_requisitos'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <Laptop className="w-3.5 h-3.5 text-teal-600" />
-          <span>Aforo & Prerrequisitos</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('acreditacion')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'acreditacion'
-              ? 'bg-white text-blue-900 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-          }`}
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Acreditación SAR (0% ISV)</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('expediente_sar')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'expediente_sar'
-              ? 'bg-blue-700 text-white shadow-xs border border-blue-600 font-black'
-              : 'text-blue-900 bg-blue-50/80 hover:bg-blue-100 border border-blue-200 font-semibold'
-          }`}
-        >
-          <FileText className="w-3.5 h-3.5 text-blue-600" />
-          <span>📑 Expediente Docente & Retención SAR</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('acreditacion_sar')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'acreditacion_sar'
-              ? 'bg-emerald-700 text-white shadow-xs border border-emerald-600 font-black'
-              : 'text-emerald-900 bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200 font-semibold'
-          }`}
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>🏛️ Auditoría Convenios & Dictamen Exención (15%)</span>
-        </button>
-
-        <button
-          onClick={() => setSubPestana('roi_desercion')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold transition-colors ${
-            subPestana === 'roi_desercion'
-              ? 'bg-indigo-700 text-white shadow-xs border border-indigo-600 font-black'
-              : 'text-indigo-900 bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-200 font-semibold'
-          }`}
-        >
-          <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
-          <span>📈 ROI Docente & Break-Even de Deserción</span>
-        </button>
       </div>
 
+      {/* MÓDULOS SECUNDARIOS (SOLO SI EL USUARIO LOS ACTIVA) */}
+      {mostrarSubpestanasAvanzadas && (
+        <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200 text-xs animate-in fade-in duration-150">
+          <span className="text-[10px] font-black uppercase text-slate-400 px-2">Herramientas Opcionales:</span>
+          
+          <button
+            id="btn-subpestana-tablero-calidad"
+            onClick={() => setSubPestana('tablero_calidad')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              subPestana === 'tablero_calidad'
+                ? 'bg-blue-600 text-white shadow-xs border border-blue-500'
+                : 'text-blue-900 bg-blue-50/70 hover:bg-blue-100 border border-blue-200'
+            }`}
+          >
+            <Award className="w-3 h-3 text-amber-400" />
+            <span>Tablero Calidad</span>
+          </button>
+
+          <button
+            onClick={() => setSubPestana('mapa_calor_riesgo')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+              subPestana === 'mapa_calor_riesgo'
+                ? 'bg-rose-600 text-white shadow-xs border border-rose-500'
+                : 'text-rose-700 bg-rose-50/80 hover:bg-rose-100 border border-rose-200'
+            }`}
+          >
+            <Flame className="w-3 h-3 text-rose-500" />
+            <span>Mapa Riesgo</span>
+          </button>
+
+          <button
+            onClick={() => setSubPestana('evaluacion')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+              subPestana === 'evaluacion'
+                ? 'bg-amber-600 text-white shadow-xs border border-amber-500'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+            }`}
+          >
+            <Award className="w-3 h-3 text-amber-600" />
+            <span>Rúbricas</span>
+          </button>
+
+          <button
+            onClick={() => setSubPestana('carga_academica')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+              subPestana === 'carga_academica'
+                ? 'bg-indigo-600 text-white shadow-xs border border-indigo-500'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+            }`}
+          >
+            <BarChart3 className="w-3 h-3 text-indigo-600" />
+            <span>Distribución Carga</span>
+          </button>
+
+          <button
+            onClick={() => setSubPestana('calendario_docente')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+              subPestana === 'calendario_docente'
+                ? 'bg-indigo-600 text-white shadow-xs border border-indigo-500'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+            }`}
+          >
+            <CalendarDays className="w-3 h-3 text-indigo-600" />
+            <span>Calendario Docente</span>
+          </button>
+
+          <button
+            onClick={() => setSubPestana('calendario_aperturas')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+              subPestana === 'calendario_aperturas'
+                ? 'bg-cyan-600 text-white shadow-xs border border-cyan-500'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+            }`}
+          >
+            <Calendar className="w-3 h-3 text-cyan-600" />
+            <span>Calendario Aperturas</span>
+          </button>
+
+          <button
+            onClick={() => setSubPestana('recursos')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+              subPestana === 'recursos'
+                ? 'bg-blue-600 text-white shadow-xs border border-blue-500'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+            }`}
+          >
+            <Laptop className="w-3 h-3 text-blue-600" />
+            <span>Aulas Virtuales</span>
+          </button>
+
+          <button
+            onClick={() => setSubPestana('certificacion')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+              subPestana === 'certificacion'
+                ? 'bg-emerald-600 text-white shadow-xs border border-emerald-500'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+            }`}
+          >
+            <GraduationCap className="w-3 h-3 text-emerald-600" />
+            <span>Certificaciones</span>
+          </button>
+
+          <button
+            onClick={() => setSubPestana('expediente_sar')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+              subPestana === 'expediente_sar'
+                ? 'bg-blue-600 text-white shadow-xs border border-blue-500'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+            }`}
+          >
+            <FileText className="w-3 h-3 text-blue-600" />
+            <span>Expediente SAR</span>
+          </button>
+
+          <button
+            onClick={() => setSubPestana('acreditacion_sar')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+              subPestana === 'acreditacion_sar'
+                ? 'bg-emerald-700 text-white shadow-xs border border-emerald-600'
+                : 'text-emerald-900 bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200'
+            }`}
+          >
+            <ShieldCheck className="w-3 h-3 text-emerald-600" />
+            <span>Convenios SAR</span>
+          </button>
+
+          <button
+            onClick={() => setSubPestana('roi_desercion')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+              subPestana === 'roi_desercion'
+                ? 'bg-indigo-700 text-white shadow-xs border border-indigo-600'
+                : 'text-indigo-900 bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-200'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
+            <span>ROI Docente</span>
+          </button>
+        </div>
+      )}
+
+
+      {/* VISTA NUEVA: SECCIÓN DE AVISOS DE LOS PROYECTOS & NOTIFICACIONES POR CORREO */}
+      {subPestana === 'avisos_proyectos' && (
+        <ProjectNoticesWorkflowSection
+          proyectos={proyectos}
+          moneda={moneda}
+          onGuardarProyecto={onGuardarProyecto}
+          onVerDetalle={onVerDetalle}
+          onNotificar={onNotificar}
+          onAbrirSilabo={(p) => {
+            setProyectoSyllabusModal(p);
+            setSyllabusModalAbierto(true);
+          }}
+          rolActual="academica"
+        />
+      )}
+
+      {/* VISTA DESTACADA: PROYECTOS CREADOS POR LA GERENCIA ACADÉMICA (CON OPCIÓN DE BORRAR) */}
+      {subPestana === 'proyectos_creados' && (
+        <AcademicCreatedProjectsView
+          proyectos={proyectos}
+          moneda={moneda}
+          onEditarProyecto={(p) => setProyectoEditando(p)}
+          onVerDetalle={onVerDetalle}
+          onGuardarProyecto={onGuardarProyecto}
+          onEliminarProyecto={(p) => {
+            if (onEliminarProyecto) {
+              onEliminarProyecto(p);
+            }
+          }}
+          onEliminarMultiples={onEliminarMultiples}
+          onAbrirWorkflowStatusModal={onAbrirWorkflowStatusModal}
+          onNotificar={onNotificar}
+          onAbrirSyllabusPDF={(p) => {
+            setProyectoSyllabusModal(p);
+            setSyllabusModalAbierto(true);
+          }}
+        />
+      )}
 
       {/* VISTA NUEVA: TABLERO DE CALIDAD & VALIDACIÓN RÁPIDA DE CONTENIDOS */}
       {subPestana === 'tablero_calidad' && (
@@ -808,42 +941,30 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
       {/* VISTA 1: CATÁLOGO & GESTIÓN CURRICULAR */}
       {subPestana === 'catalogo' && (
         <div className="space-y-4">
-          {/* SECCIÓN DESTACADA: APERTURA DE NUEVO PROGRAMA ACADÉMICO (Sello de Hora Automático) */}
-          <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-emerald-950 text-white rounded-2xl p-4 sm:p-5 border border-emerald-500/40 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden">
-            <div className="flex items-start sm:items-center gap-3.5 relative z-10">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-slate-950 flex items-center justify-center font-black shadow-md shrink-0">
-                <Plus className="w-6 h-6 stroke-[3]" />
+          {/* BANNER DE ACCESO DIRECTO A PROYECTOS CREADOS POR ACADÉMICA */}
+          <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs border border-indigo-500/30 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-800/80 text-indigo-200 rounded-xl shrink-0 border border-indigo-600/50">
+                <GraduationCap className="w-5 h-5 text-indigo-300" />
               </div>
               <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 rounded">
-                    Exclusivo Gerencia Académica
-                  </span>
-                  <span className="text-[11px] font-bold text-emerald-300 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                    Sello de Hora Automático y Control de Flujo Directo
-                  </span>
-                </div>
-                <h3 className="text-base sm:text-lg font-black text-white mt-1">
-                  Apertura y Registro de Nuevo Programa Educativo
-                </h3>
-                <p className="text-xs text-slate-300 max-w-2xl mt-0.5">
-                  Diseña la propuesta curricular, syllabus, carga docente y metas de cupos. Al guardar, se sella automáticamente la hora exacta de creación y se enlaza directamente a la <strong>Gerencia de Comercialización</strong> para su venta y difusión.
+                <span className="font-bold text-white block text-xs">
+                  Proyectos Creados por la Gerencia Académica ({totalProyectosCreadosAcademica})
+                </span>
+                <p className="text-slate-300 text-[11px] mt-0.5">
+                  Visualiza el catálogo consolidado de programas elaborados por Académica con opción de borrado individual o masivo.
                 </p>
               </div>
             </div>
-
-            <div className="flex items-center gap-3 relative z-10 self-stretch sm:self-auto justify-end">
-              <button
-                type="button"
-                id="btn-destacado-nuevo-proyecto-academica"
-                onClick={onNuevoProyecto}
-                className="w-full sm:w-auto px-5 py-3 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500 hover:from-emerald-300 hover:to-teal-300 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2.5 transition-all hover:scale-[1.02] cursor-pointer"
-              >
-                <Plus className="w-4 h-4 text-slate-950 stroke-[3]" />
-                <span>+ Crear Nuevo Proyecto / Programa</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              id="btn-ir-a-proyectos-creados-academica"
+              onClick={() => setSubPestana('proyectos_creados')}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
+            >
+              <span>Ver Proyectos Creados ({totalProyectosCreadosAcademica})</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           {/* Banner de acceso rápido al Tablero de Calidad */}
@@ -999,12 +1120,12 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
                 </span>
                 <button
                   id="btn-nuevo-programa-tabla"
-                  onClick={onNuevoProyecto}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
-                  title="Registrar nuevo programa formativo desde Gerencia Académica"
+                  onClick={handleAbrirNuevoSilaboProyecto}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  title="Diseñar nuevo Sílabo Oficial (Proyecto) con correlativos Empresa & SAR"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Registrar Programa</span>
+                  <span>+ Diseñar Sílabo Oficial</span>
                 </button>
               </div>
             </div>
@@ -1014,10 +1135,10 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
                 <GraduationCap className="w-10 h-10 mx-auto text-slate-300" />
                 <p className="text-sm font-medium">No se encontraron programas con los filtros seleccionados.</p>
                 <button
-                  onClick={onNuevoProyecto}
-                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-bold"
+                  onClick={handleAbrirNuevoSilaboProyecto}
+                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-bold cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Registrar nuevo programa formativo
+                  <Plus className="w-3.5 h-3.5" /> Diseñar nuevo sílabo oficial (proyecto)
                 </button>
               </div>
             ) : (
@@ -1200,6 +1321,20 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
                           {/* Acciones */}
                           <td className="py-3 px-3 text-right">
                             <div className="flex items-center justify-end gap-1">
+                              {/* Botón Borrar Proyecto (Solicitado explícitamente) */}
+                              {onEliminarProyecto && (
+                                <button
+                                  type="button"
+                                  id={`btn-borrar-catalogo-${p.id}`}
+                                  onClick={() => setProyectoABorrarDirecto(p)}
+                                  className="px-2 py-1 bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white rounded text-[11px] font-bold flex items-center gap-1 transition-all border border-rose-200 hover:border-rose-600 cursor-pointer"
+                                  title={`Eliminar el proyecto "${p.nombreProyecto}"`}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span className="hidden sm:inline">Borrar</span>
+                                </button>
+                              )}
+
                               <button
                                 type="button"
                                 onClick={() => setProyectoEditando(p)}
@@ -1214,26 +1349,14 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setProyectoSyllabusModal(p);
+                                  setSyllabusModoInicial('vista');
                                   setSyllabusModalAbierto(true);
                                 }}
                                 className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[11px] font-bold flex items-center gap-1 transition-colors"
-                                title="Generar e imprimir Sílabo Oficial en PDF con membrete institucional"
+                                title="Abrir documento del Sílabo Oficial"
                               >
-                                <Printer className="w-3 h-3 text-purple-600" />
-                                <span className="hidden sm:inline">PDF</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setProyectoDuplicar(p);
-                                  setDuplicateModalAbierto(true);
-                                }}
-                                className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded text-[11px] font-bold flex items-center gap-1 transition-colors"
-                                title="Duplicar programa educativo (crear nueva cohorte/sección)"
-                              >
-                                <Copy className="w-3 h-3 text-amber-700" />
-                                <span className="hidden sm:inline">Clonar</span>
+                                <FileText className="w-3 h-3 text-purple-600" />
+                                <span className="hidden sm:inline">Sílabo</span>
                               </button>
 
                               <button
@@ -1384,7 +1507,6 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
           proyectos={proyectos}
           moneda={moneda}
           onGuardarProyecto={onGuardarProyecto}
-          onNuevoProyecto={onNuevoProyecto}
           onVerDetalle={onVerDetalle}
         />
       )}
@@ -1657,34 +1779,109 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
 
       {/* VISTA 5: FICHA CURRICULAR & PLAN DE ESTUDIO (SYLLABUS) */}
       {subPestana === 'syllabus' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Selector lateral de programas */}
+        <div className="space-y-4">
+          {/* Banner Nuevo Flujo Institucional: El Sílabo es el Proyecto */}
+          <div className="p-4 bg-gradient-to-r from-indigo-900 via-purple-950 to-slate-900 text-white rounded-2xl border border-indigo-700/60 shadow-md flex items-start justify-between gap-3.5 text-xs flex-wrap">
+            <div className="flex items-start gap-3.5 flex-1 min-w-[280px]">
+              <div className="p-2.5 bg-amber-400 text-slate-950 rounded-xl shrink-0 shadow-sm font-black">
+                <BookOpen className="w-5 h-5 text-slate-950" />
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-amber-300 uppercase tracking-wide text-xs">
+                    Catálogo de Sílabos Oficiales Institucionales
+                  </span>
+                  <span className="text-[10px] font-extrabold px-2.5 py-0.5 bg-indigo-500/30 text-indigo-200 rounded-full border border-indigo-400/30">
+                    Correlativo Automático Empresa & SAR
+                  </span>
+                </div>
+                <p className="text-slate-200 text-xs leading-relaxed">
+                  El Sílabo Oficial constituye el <strong>Proyecto Educativo Institucional</strong>. Se le asigna numeración correlativa automática para control de la Empresa (<code className="text-indigo-200 font-mono">SIG-ACAD-2026-XXX</code>) y para la SAR (<code className="text-amber-200 font-mono">000-001-01-XXXXXXXX</code>). Al grabarse, <strong>se remite formalmente a la Gerencia General para su revisión y dictamen de aprobación</strong>, y posteriormente a la <strong>Gerencia de Comercialización</strong> para ventas y matrícula.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              id="btn-crear-silabo-oficial-banner"
+              onClick={handleAbrirNuevoSilaboProyecto}
+              className="px-4 py-2.5 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-black text-xs rounded-xl flex items-center gap-2 shadow-md hover:scale-[1.02] cursor-pointer transition-all shrink-0 self-center"
+              title="Diseñar y registrar un nuevo Sílabo Oficial con correlativos automáticos"
+            >
+              <Plus className="w-4 h-4 text-slate-950 stroke-[3]" />
+              <span>+ Crear Sílabo Oficial</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Selector lateral de programas - Solo sílabos oficiales creados */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs h-fit space-y-2">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <BookOpen className="w-4 h-4 text-blue-600" />
-              Seleccionar Programa ({proyectos.length})
-            </h3>
+            <div className="flex items-center justify-between gap-1 mb-2">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <BookOpen className="w-4 h-4 text-blue-600" />
+                Sílabos Oficiales ({silabosCreados.length})
+              </h3>
+              <button
+                type="button"
+                id="btn-crear-silabo-lateral"
+                onClick={handleAbrirNuevoSilaboProyecto}
+                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer transition-colors"
+                title="Crear un nuevo Sílabo Oficial"
+              >
+                <Plus className="w-3 h-3 stroke-[2.5]" />
+                <span>+ Crear</span>
+              </button>
+            </div>
             <div className="space-y-1.5 max-h-[600px] overflow-y-auto">
-              {proyectos.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setProgramaSyllabusSeleccionado(p)}
-                  className={`w-full text-left p-2.5 rounded-lg border transition-all text-xs ${
-                    programaSyllabusSeleccionado?.id === p.id
-                      ? 'bg-blue-50 border-blue-400 text-blue-900 shadow-xs font-bold'
-                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-medium'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1 mb-0.5">
-                    <span className="text-[9px] font-mono uppercase px-1 rounded bg-slate-200/80 text-slate-800">
-                      {p.codigoPrograma || `ACAD-2026-0${p.id}`}
-                    </span>
-                    <span className="text-[10px] text-slate-500">{p.horasClase}h</span>
-                  </div>
-                  <div className="truncate">{p.nombreProyecto}</div>
-                </button>
-              ))}
+              {silabosCreados.length === 0 ? (
+                <div className="p-4 text-center text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                  <BookOpen className="w-7 h-7 text-slate-400 mx-auto mb-1.5 opacity-60" />
+                  <p className="text-xs font-bold text-slate-700">Sin sílabos creados</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Cree un sílabo oficial con el botón "+ Crear".</p>
+                </div>
+              ) : (
+                silabosCreados.map((s) => {
+                  const esSeleccionado = programaSyllabusSeleccionado?.id === s.id || (s.codigoPrograma && programaSyllabusSeleccionado?.codigoPrograma === s.codigoPrograma);
+                  return (
+                    <div
+                      key={s.id}
+                      className={`group flex items-center justify-between gap-1 p-2 rounded-lg border transition-all text-xs ${
+                        esSeleccionado
+                          ? 'bg-blue-50 border-blue-400 text-blue-900 shadow-xs font-bold'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 font-medium'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const match = proyectos.find(p => p.id === s.id || (p.codigoPrograma && p.codigoPrograma === s.codigoPrograma) || (p.codigoProyecto && p.codigoProyecto === s.codigoPrograma));
+                          setProgramaSyllabusSeleccionado(match ? { ...s, ...match } : s);
+                        }}
+                        className="flex-1 text-left min-w-0 cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-0.5">
+                          <span className="text-[9px] font-mono uppercase px-1 rounded bg-slate-200/80 text-slate-800">
+                            {s.codigoPrograma || `ACAD-2026-0${s.id}`}
+                          </span>
+                          <span className="text-[10px] text-slate-500">{s.horasClase}h</span>
+                        </div>
+                        <div className="truncate">{s.nombreProyecto}</div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSilaboABorrar(s);
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer shrink-0"
+                        title={`Eliminar Sílabo "${s.nombreProyecto}"`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -1717,13 +1914,14 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
                     type="button"
                     onClick={() => {
                       setProyectoSyllabusModal(programaSyllabusSeleccionado);
+                      setSyllabusModoInicial('vista');
                       setSyllabusModalAbierto(true);
                     }}
                     className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer transition-all"
-                    title="Generar y previsualizar documento imprimible del Sílabo Oficial en PDF con membrete institucional"
+                    title="Ver Sílabo Oficial con membrete institucional, firmas y opciones de impresión/descarga en PDF"
                   >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Sílabo Oficial PDF</span>
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Ver Sílabo Oficial</span>
                   </button>
 
                   <button
@@ -1746,6 +1944,17 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     <span>Editar</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="btn-eliminar-silabo-catalogo"
+                    onClick={() => setSilaboABorrar(programaSyllabusSeleccionado)}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-lg flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                    title="Eliminar este Sílabo Oficial del catálogo"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Eliminar</span>
                   </button>
                 </div>
               </div>
@@ -1923,10 +2132,30 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
               </div>
             </div>
           ) : (
-            <div className="lg:col-span-2 bg-white p-8 text-center text-slate-400 rounded-xl border border-slate-200">
-              Seleccione un programa del catálogo lateral para visualizar su Syllabus completo.
+            <div className="lg:col-span-2 bg-white p-12 text-center text-slate-500 rounded-xl border border-dashed border-slate-200 space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <div className="text-sm font-bold text-slate-800">
+                {silabosCreados.length === 0 ? 'No hay Sílabos Oficiales Creados' : 'Seleccione un Sílabo Oficial'}
+              </div>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                {silabosCreados.length === 0
+                  ? 'En esta sección solo se muestran los sílabos oficiales formulados. Diseñe el primer programa institucional con correlativo Empresa y SAR.'
+                  : 'Seleccione un programa del catálogo lateral para visualizar su Sílabo Oficial, rúbricas y ficha técnica.'}
+              </p>
+              <button
+                type="button"
+                id="btn-crear-silabo-vacio"
+                onClick={handleAbrirNuevoSilaboProyecto}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl inline-flex items-center gap-2 shadow-xs cursor-pointer transition-colors"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <span>+ Crear Sílabo Oficial</span>
+              </button>
             </div>
           )}
+          </div>
         </div>
       )}
 
@@ -2483,21 +2712,23 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
           onClose={() => {
             setSyllabusModalAbierto(false);
             setProyectoSyllabusModal(null);
+            setSyllabusModoInicial('vista');
           }}
-          proyecto={proyectoSyllabusModal || programaSyllabusSeleccionado || proyectos[0] || null}
+          modoInicial={syllabusModoInicial}
+          proyecto={syllabusModoInicial === 'crear' ? null : (proyectoSyllabusModal || programaSyllabusSeleccionado || proyectos[0] || null)}
           proyectos={proyectos}
           moneda={moneda}
           onGuardarProyecto={(actualizado) => {
-            onGuardarProyecto(actualizado);
+            onGuardarProyecto(actualizado, 'gerencia-academica');
             if (programaSyllabusSeleccionado?.id === actualizado.id) {
               setProgramaSyllabusSeleccionado(actualizado);
             }
           }}
           onCrearProyecto={(nuevo) => {
-            onGuardarProyecto(nuevo);
+            onGuardarProyecto(nuevo, 'gerencia-academica');
             setProgramaSyllabusSeleccionado(nuevo);
             if (onNotificar) {
-              onNotificar(`Nuevo programa "${nuevo.nombreProyecto}" registrado exitosamente.`);
+              onNotificar(`¡Sílabo Oficial "${nuevo.nombreProyecto}" formalizado como Proyecto! Correlativos: Empresa (${nuevo.codigoProyecto}) y SAR (${nuevo.correlativoSAR}). Remitido a Gerencia General para su revisión y dictamen de aprobación.`);
             }
           }}
           onEliminarProyecto={(aEliminar) => {
@@ -2512,7 +2743,6 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
               onNotificar(`Programa "${aEliminar.nombreProyecto}" eliminado del catálogo.`);
             }
           }}
-          onNuevoProyecto={onNuevoProyecto}
         />
       )}
 
@@ -2560,25 +2790,159 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
         />
       )}
 
-      {/* 4. Modal de Duplicación Rápida de Proyectos / Nuevas Cohortes */}
-      {duplicateModalAbierto && (
-        <DuplicateProjectModal
-          isOpen={duplicateModalAbierto}
-          onClose={() => {
-            setDuplicateModalAbierto(false);
-            setProyectoDuplicar(null);
-          }}
-          proyectoBase={proyectoDuplicar || programaSyllabusSeleccionado || proyectos[0] || null}
-          proyectosExistentes={proyectos}
-          moneda={moneda}
-          onDuplicarProyecto={(nuevoProyecto) => {
-            onGuardarProyecto(nuevoProyecto);
-            setProgramaSyllabusSeleccionado(nuevoProyecto);
-            setDuplicateModalAbierto(false);
-            setProyectoDuplicar(null);
-            onVerDetalle(nuevoProyecto);
-          }}
-        />
+      {/* Modal de Confirmación de Borrado Directo desde el Catálogo */}
+      {proyectoABorrarDirecto && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-rose-200 w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 border-b border-rose-100 flex items-center justify-between bg-rose-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center border border-rose-200 shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-rose-950">
+                    Eliminar Proyecto Académico
+                  </h3>
+                  <p className="text-[11px] text-rose-700">
+                    Confirmación de borrado
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProyectoABorrarDirecto(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-white rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3.5 text-xs">
+              <p className="text-slate-600 leading-relaxed">
+                ¿Estás seguro de que deseas eliminar permanentemente el proyecto <strong>"{proyectoABorrarDirecto.nombreProyecto}"</strong>? Esta acción removerá el curso de la matriz institucional.
+              </p>
+
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-bold text-slate-700 bg-slate-200 px-1.5 py-0.5 rounded">
+                    {proyectoABorrarDirecto.codigoPrograma || `#${proyectoABorrarDirecto.numeroCorrelativo}`}
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-100 text-blue-800 rounded">
+                    {proyectoABorrarDirecto.tipoProyecto}
+                  </span>
+                </div>
+                <div className="font-bold text-slate-900 text-xs">
+                  {proyectoABorrarDirecto.nombreProyecto}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Docente: {proyectoABorrarDirecto.nombreDocente} • {proyectoABorrarDirecto.horasClase} hrs
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setProyectoABorrarDirecto(null)}
+                className="px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                id="btn-confirmar-borrado-directo"
+                onClick={() => {
+                  const p = proyectoABorrarDirecto;
+                  setProyectoABorrarDirecto(null);
+                  if (onEliminarProyecto) {
+                    onEliminarProyecto(p);
+                  }
+                  onNotificar?.(`Proyecto "${p.nombreProyecto}" eliminado.`);
+                }}
+                className="px-4 py-2 text-xs font-black text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Sí, Eliminar Proyecto</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación de Eliminación de Sílabo Oficial */}
+      {silaboABorrar && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-rose-200 w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 border-b border-rose-100 flex items-center justify-between bg-rose-50/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center border border-rose-200 shrink-0">
+                  <Trash2 className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-rose-950">
+                    Eliminar Sílabo Oficial
+                  </h3>
+                  <p className="text-[11px] text-rose-700">
+                    Baja del catálogo institucional
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSilaboABorrar(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-white rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3 text-xs">
+              <p className="text-slate-600 leading-relaxed">
+                ¿Está seguro de que desea eliminar el Sílabo Oficial <strong className="text-slate-900">"{silaboABorrar.nombreProyecto}"</strong>?
+              </p>
+
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-bold text-slate-700 bg-slate-200 px-1.5 py-0.5 rounded">
+                    {silaboABorrar.codigoPrograma || silaboABorrar.codigoProyecto || silaboABorrar.id}
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-100 text-blue-800 rounded">
+                    {silaboABorrar.tipoProyecto || 'Curso'}
+                  </span>
+                </div>
+                <div className="font-bold text-slate-900 text-xs truncate">
+                  {silaboABorrar.nombreProyecto}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Docente: {silaboABorrar.nombreDocente || 'Por asignar'} • {silaboABorrar.horasClase || 12} hrs
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-100 text-[11px] text-rose-700">
+                Esta acción eliminará el sílabo del catálogo institucional y su registro de la matriz general.
+              </div>
+            </div>
+
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSilaboABorrar(null)}
+                className="px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                id="btn-confirmar-eliminar-silabo-modal"
+                onClick={handleConfirmarEliminarSilabo}
+                className="px-4 py-2 text-xs font-black text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirmar y Eliminar</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

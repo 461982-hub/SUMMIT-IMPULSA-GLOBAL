@@ -27,11 +27,12 @@ import {
   HelpCircle,
   Clock,
   Sparkles,
-  KeyRound
+  KeyRound,
+  Video
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda, VistaPrincipal } from '../types';
 import { LISTA_CREDENCIALES_GERENCIAS, CredencialGerencia } from '../utils/gerenciasCredenciales';
-import { formatearHNL } from '../utils/poa2027Data';
+import { formatearHNL } from '../utils/poa2026Data';
 import { SummitLogo } from './SummitLogo';
 import { 
   calcularMetricasPorGerencia, 
@@ -54,6 +55,7 @@ interface DirectorioGerenciasModalProps {
   proyectos?: ProyectoEducativo[];
   moneda?: Moneda;
   onSolicitarAutorizacionGG?: (accionDesc?: string) => void;
+  onAbrirGoogleMeetGerenciasModal?: () => void;
 }
 
 type TabDirectorio = 'directorio_desarrollo' | 'resumen_estados' | 'seguridad_gg';
@@ -67,6 +69,7 @@ export const DirectorioGerenciasModal: React.FC<DirectorioGerenciasModalProps> =
   proyectos = [],
   moneda = 'LPS' as Moneda,
   onSolicitarAutorizacionGG,
+  onAbrirGoogleMeetGerenciasModal,
 }) => {
   const [tabActiva, setTabActiva] = useState<TabDirectorio>('directorio_desarrollo');
   const [copiadoCampo, setCopiadoCampo] = useState<string | null>(null);
@@ -218,6 +221,19 @@ export const DirectorioGerenciasModal: React.FC<DirectorioGerenciasModalProps> =
               <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
               <span>Parámetro de Seguridad GG</span>
             </button>
+
+            {onAbrirGoogleMeetGerenciasModal && (
+              <button
+                id="btn-directorio-abrir-meet"
+                type="button"
+                onClick={onAbrirGoogleMeetGerenciasModal}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-xs"
+                title="Exclusivo para la Reunión de las Gerencias (Google Meet)"
+              >
+                <Video className="w-3.5 h-3.5" />
+                <span>Reunión de Gerencias (Meet)</span>
+              </button>
+            )}
 
           </div>
 

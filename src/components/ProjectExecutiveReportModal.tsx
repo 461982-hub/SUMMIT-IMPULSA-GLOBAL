@@ -21,6 +21,8 @@ import { ProyectoEducativo, Moneda } from '../types';
 import { formatearMoneda } from '../utils/calculations';
 import { exportarProyectoPDF } from '../utils/exportUtils';
 import { SummitLogo } from './SummitLogo';
+import { DocumentOfficialHeader } from './common/DocumentOfficialHeader';
+import { DocumentOfficialFooter } from './common/DocumentOfficialFooter';
 
 interface ProjectExecutiveReportModalProps {
   isOpen: boolean;
@@ -92,51 +94,39 @@ export const ProjectExecutiveReportModal: React.FC<ProjectExecutiveReportModalPr
         className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col max-h-[94vh] print:max-h-none print:shadow-none print:border-none animate-in fade-in zoom-in-95 duration-150"
       >
         
-        {/* Barra Superior con Controles (No se imprime) */}
-        <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white print:hidden">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
-              <FileText className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                Reporte Ejecutivo en PDF • Proyecto #{proyecto.id}
-              </h2>
-              <p className="text-[11px] text-slate-400">
-                Vista previa del documento formal de rentabilidad con diseño ejecutivo
-              </p>
-            </div>
-          </div>
+        {/* Barra Superior Oficial Estandarizada (No se imprime) */}
+        <DocumentOfficialHeader
+          gerencia="general"
+          titulo={`Reporte Ejecutivo de Rentabilidad • #${proyecto.id}`}
+          subtitulo={proyecto.nombreProyecto}
+          codigoDocumento={proyecto.codigoFiscalSAR || `SAR-ISV-2026-${String(proyecto.numeroCorrelativo || proyecto.id).padStart(3, '0')}`}
+          folioCorrelativo={String(proyecto.numeroCorrelativo || proyecto.id).padStart(3, '0')}
+          moneda={moneda}
+          onClose={onClose}
+          actions={
+            <>
+              <button
+                id="btn-imprimir-reporte"
+                onClick={handleImprimir}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors border border-slate-800"
+                title="Imprimir o Guardar como PDF"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Imprimir</span>
+              </button>
 
-          <div className="flex items-center gap-2">
-            <button
-              id="btn-imprimir-reporte"
-              onClick={handleImprimir}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors border border-slate-700"
-              title="Imprimir o Guardar como PDF"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Imprimir</span>
-            </button>
-
-            <button
-              id="btn-descargar-pdf-directo"
-              onClick={handleDescargarPDF}
-              disabled={isExporting}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm disabled:opacity-50"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>{isExporting ? 'Generando...' : 'Descargar PDF'}</span>
-            </button>
-
-            <button
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors ml-1"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
+              <button
+                id="btn-descargar-pdf-directo"
+                onClick={handleDescargarPDF}
+                disabled={isExporting}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors shadow-xs disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{isExporting ? 'Generando...' : 'Descargar PDF'}</span>
+              </button>
+            </>
+          }
+        />
 
         {/* Hoja Ejecutiva Estilizada (Simula página física A4) */}
         <div className="p-6 sm:p-8 overflow-y-auto space-y-6 flex-1 bg-slate-100/50 print:bg-white print:p-0">
@@ -568,28 +558,29 @@ export const ProjectExecutiveReportModal: React.FC<ProjectExecutiveReportModalPr
 
         </div>
 
-        {/* Footer del Modal con Acciones */}
-        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between print:hidden">
-          <span className="text-xs text-slate-500">
-            Documento listo para exportación o presentación formal
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
-            >
-              Cerrar
-            </button>
-            <button
-              onClick={handleDescargarPDF}
-              disabled={isExporting}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>{isExporting ? 'Generando PDF...' : 'Descargar PDF'}</span>
-            </button>
-          </div>
-        </div>
+        {/* Footer del Modal con Acciones y Respaldo Institucional */}
+        <DocumentOfficialFooter
+          gerencia="general"
+          codigoDocumento={proyecto.codigoFiscalSAR || `SAR-ISV-2026-${String(proyecto.numeroCorrelativo || proyecto.id).padStart(3, '0')}`}
+          actions={
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onClose}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                Cerrar
+              </button>
+              <button
+                onClick={handleDescargarPDF}
+                disabled={isExporting}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{isExporting ? 'Generando PDF...' : 'Descargar PDF'}</span>
+              </button>
+            </div>
+          }
+        />
 
       </div>
     </div>

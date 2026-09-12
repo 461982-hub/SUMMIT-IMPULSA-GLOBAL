@@ -71,14 +71,19 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'nuevos_academica' | 'en_campana' | 'meta_cumplida'>('todos');
 
+  // Excluir sílabos base: son la estructura curricular básica custodiada en Académica, no se envían a comercialización
+  const proyectosOperativos = useMemo(() => {
+    return proyectos.filter((p) => !p.esSilaboBase && p.tipoRegistro !== 'silabo_base');
+  }, [proyectos]);
+
   // Proyecto seleccionado para comercializar
   const [proyectoSeleccionadoId, setProyectoSeleccionadoId] = useState<string>(() => {
-    if (proyectoInicialId && proyectos.some((p) => p.id === proyectoInicialId)) {
+    if (proyectoInicialId && proyectosOperativos.some((p) => p.id === proyectoInicialId)) {
       return proyectoInicialId;
     }
     // Preferir uno en comercialización o el primero
-    const preferido = proyectos.find((p) => p.etapaFlujo === 'comercializacion' || !p.comercializacionCompletada);
-    return preferido ? preferido.id : (proyectos[0]?.id || '');
+    const preferido = proyectosOperativos.find((p) => p.etapaFlujo === 'comercializacion' || !p.comercializacionCompletada);
+    return preferido ? preferido.id : (proyectosOperativos[0]?.id || '');
   });
 
   const [subTabActiva, setSubTabActiva] = useState<SubTabLanzador>('proceso_venta');
@@ -86,30 +91,30 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
 
   // Proyecto activo en vista
   const proyectoActivo = useMemo(() => {
-    return proyectos.find((p) => p.id === proyectoSeleccionadoId) || proyectos[0] || null;
-  }, [proyectos, proyectoSeleccionadoId]);
+    return proyectosOperativos.find((p) => p.id === proyectoSeleccionadoId) || proyectosOperativos[0] || null;
+  }, [proyectosOperativos, proyectoSeleccionadoId]);
 
   // Resumen ejecutivo de alto nivel para el catálogo
   const resumenEjecutivo = useMemo(() => {
-    const total = proyectos.length;
-    const enCampana = proyectos.filter((p) => p.seLlevoACabo === 'En proceso' || p.comercializacionCompletada).length;
-    const pendientes = proyectos.filter(
+    const total = proyectosOperativos.length;
+    const enCampana = proyectosOperativos.filter((p) => p.seLlevoACabo === 'En proceso' || p.comercializacionCompletada).length;
+    const pendientes = proyectosOperativos.filter(
       (p) => !p.comercializacionCompletada || p.etapaFlujo === 'comercializacion' || p.seLlevoACabo === 'Planificado'
     ).length;
-    const facturacionTotal = proyectos.reduce((acc, p) => {
+    const facturacionTotal = proyectosOperativos.reduce((acc, p) => {
       const precio = p.precioSugeridoConISV || p.precioSugeridoAlumno || 2500;
       const alumnos = p.alumnosFinal || p.alumnosProyectados || 12;
       return acc + (p.ingresoRealTotal || precio * alumnos);
     }, 0);
-    const alumnosTotal = proyectos.reduce((acc, p) => acc + (p.alumnosFinal || 0), 0);
-    const metaTotal = proyectos.reduce((acc, p) => acc + (p.alumnosProyectados || 0), 0);
+    const alumnosTotal = proyectosOperativos.reduce((acc, p) => acc + (p.alumnosFinal || 0), 0);
+    const metaTotal = proyectosOperativos.reduce((acc, p) => acc + (p.alumnosProyectados || 0), 0);
 
     return { total, enCampana, pendientes, facturacionTotal, alumnosTotal, metaTotal };
-  }, [proyectos]);
+  }, [proyectosOperativos]);
 
   // Lista filtrada de todos los proyectos elaborados por Académica
   const proyectosFiltrados = useMemo(() => {
-    return proyectos.filter((p) => {
+    return proyectosOperativos.filter((p) => {
       const matchBusqueda =
         p.nombreProyecto.toLowerCase().includes(busqueda.toLowerCase()) ||
         p.nombreDocente.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -129,7 +134,7 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
       }
       return true;
     });
-  }, [proyectos, busqueda, filtroEstado]);
+  }, [proyectosOperativos, busqueda, filtroEstado]);
 
   // Estados locales para editar y guardar interactivamente el proyecto activo
   const [leadsInput, setLeadsInput] = useState<number>(proyectoActivo?.leadsGenerados || 35);

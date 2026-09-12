@@ -7,7 +7,7 @@
  */
 
 import { ProyectoEducativo, Moneda } from '../types';
-import { POA_2027_DATOS } from './poa2027Data';
+import { POA_2026_DATOS } from './poa2026Data';
 import { convertirAHNL } from './poaMonthlyTrackingUtils';
 import { obtenerClaveMesProyecto } from './monthUtils';
 
@@ -285,9 +285,9 @@ export function calcularResumenEstadosPOA(
     .reduce((sum, p) => sum + convertirAHNL(p.ingresoRealTotal || 0, moneda), 0);
   const facturacionPendienteGGHNL = Math.max(0, facturacionTotalHNL - facturacionAprobadaGGHNL);
 
-  const metaFacturacionAnualHNL = POA_2027_DATOS.resumen.ingresosProyectados; // L. 1,969,000.00
-  const metaAnualProyectos = POA_2027_DATOS.resumen.metaAnualProyectos; // 124 cursos
-  const puntoEquilibrioProyectos = POA_2027_DATOS.resumen.puntoEquilibrioAnual; // 44 cursos
+  const metaFacturacionAnualHNL = POA_2026_DATOS.resumen.ingresosProyectados;
+  const metaAnualProyectos = POA_2026_DATOS.resumen.metaAnualProyectos;
+  const puntoEquilibrioProyectos = POA_2026_DATOS.resumen.puntoEquilibrioAnual;
 
   const porcentajeFacturacionGlobal = Math.min(100, (facturacionTotalHNL / metaFacturacionAnualHNL) * 100);
   const porcentajeFacturacionAprobada = Math.min(100, (facturacionAprobadaGGHNL / metaFacturacionAnualHNL) * 100);

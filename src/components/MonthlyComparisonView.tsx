@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda, ResumenMensual } from '../types';
 import { formatearMoneda } from '../utils/calculations';
-import { formatearHNL } from '../utils/poa2027Data';
+import { formatearHNL } from '../utils/poa2026Data';
 import { 
   calcularResumenesMensuales, 
   compararDosMeses, 
