@@ -172,11 +172,14 @@ export interface DesgloseFiscalCompleto {
   badgeEstado: 'exento' | 'gravado_optimo' | 'gravado_estandar';
 }
 
+
 export type EtapaFlujoProyecto = 
   | 'elaboracion_academica' 
-  | 'revision_gerencia_general' // Nuevo flujo: Sílabo guardado va a Gerencia General para revisión y aprobación
+  | 'revision_gerencia_general' // Sílabo guardado va a Gerencia General para revisión y aprobación
+  | 'rechazado_gerencia_general' // Rechazado por GG, devuelto a Académica para corrección
   | 'comercializacion' 
-  | 'dictamen_general' 
+  | 'dictamen_general' // Retorno a Gerencia General tras alcanzar cupo de 6 alumnos para aprobación final de inicio y rebaja del POA
+  | 'aprobacion_inicio_gg' // Alias específico de dictamen de inicio de curso
   | 'aprobado_listo'
   | 'cerrado';
 
@@ -190,7 +193,7 @@ export interface NotificacionGerencia {
   proyectoId?: string;
   nombreProyecto?: string;
   leida: boolean;
-  tipo: 'nuevo_proyecto' | 'proyecto_comercializado' | 'dictamen_general' | 'alerta' | 'silabo_creado_revision_gg' | 'aprobado_gg_a_comercializacion' | 'retorno_gg_a_academica';
+  tipo: 'nuevo_proyecto' | 'proyecto_comercializado' | 'dictamen_general' | 'alerta' | 'silabo_creado_revision_gg' | 'aprobado_gg_a_comercializacion' | 'retorno_gg_a_academica' | 'silabo_rechazado_gg' | 'silabo_corregido_academica';
   // Datos de notificación por correo electrónico
   destinatariosEmails?: string[];
   asuntoEmail?: string;
@@ -329,6 +332,7 @@ export interface ProyectoEducativo {
   fechaEnvioRevisionGG?: string; // Fecha en que Académica grabó y remitió el sílabo a GG
   aprobadoPorGerenciaGeneralPrevia?: boolean; // True si GG ya revisó y aprobó formalmente el sílabo
   aprobadoGerenciaGeneral?: boolean; // Alias
+  aprobadoPor?: string; // Nombre y cargo de quien aprobó (ej. 'Dr. Walter Rene Pedroza - Gerencia General')
   fechaAprobacionGerenciaGeneralPrevia?: string; // Fecha en que GG emitió aprobación para pasar a comercialización
   fechaRevisionGerenciaGeneral?: string; // Alias
   observacionesRevisionGeneral?: string; // Dictamen u observaciones de GG antes de comercialización
@@ -337,12 +341,32 @@ export interface ProyectoEducativo {
   avisosProyecto?: AvisoProyectoItem[]; // Bitácora oficial de avisos inter-gerenciales y notificaciones enviadas
   precioSugeridoVentaNeto?: number; // Alias para precio neto sugerido por alumno
 
+  // Ciclo de Revisión, Rechazo y Corrección (GG <-> Académica)
+  motivoAprobacionGerenciaGeneral?: string; // Razón/fundamento explícito de la aprobación dictado por Gerencia General
+  rechazadoPorGerenciaGeneral?: boolean; // True si GG rechazó el sílabo y lo devolvió a Académica
+  motivoRechazoGerenciaGeneral?: string; // Razón/motivo explícito del rechazo dictado por Gerencia General
+  fechaRechazoGerenciaGeneral?: string; // Fecha y hora en que GG rechazó el proyecto
+  corregidoReenviadoRevisionGG?: boolean; // True si Académica ya corrigió las observaciones y reenvió a GG
+  fechaReenvioRevisionGG?: string; // Fecha en que Académica reenvió el sílabo corregido a GG
+
+  // Control de Plazo de 25 Días Hábiles & Umbral de 6 Alumnos para Inicio
+  diasHabilesTotalesFlujo?: number; // 25 días hábiles totales
+  diasHabilesTomadosGG?: number; // Días hábiles utilizados por GG (máx 5)
+  diasHabilesAhorradosGG?: number; // Días hábiles ahorrados por GG y transferidos a Comercialización
+  diasHabilesAsignadosComercial?: number; // 25 - diasHabilesTomadosGG
+  inicioCursoHabilitadoComercial?: boolean; // True cuando Comercialización activa el inicio tras alcanzar >= 6 alumnos
+  fechaInicioCursoHabilitado?: string; // Fecha y hora en que Comercialización dio inicio al curso
+  remitidoGGParaAprobacionPOA?: boolean; // True cuando Comercialización remite de vuelta a GG para rebaja del POA
+  aprobadoInicioDefinitivoGG?: boolean; // True cuando GG emite la aprobación final de inicio y rebaja del POA
+  fechaAprobacionInicioDefinitivoGG?: string; // Fecha en que GG aprobó el inicio y rebaja POA
+
   // Tratamiento Fiscal ISV (SAR)
   servicioFiscal?: TipoServicioFiscal;
   aplicaISV?: boolean;
   tasaISV?: number; // 15 o 0
   isvPorAlumno?: number;
   precioSugeridoConISV?: number;
+  precioFinalAlumnoConISV?: number; // Precio final sugerido por alumno con ISV incluido (neto + ISV)
   isvVentaRequeridaTotal?: number;
   precioVentaRequeridoConISV?: number;
   isvTotalTrasladarSAR?: number;
@@ -712,6 +736,9 @@ export interface ProyectoEducativo {
   descuentoPreventaPct?: number;
   metaVentaIngreso?: number;
 
+  // Configuración de Publicidad y Flyer para Redes Sociales (Gerencia de Comercialización)
+  publicidadConfig?: PublicidadRedesSocialesConfig;
+
   // Campos calculados
   costoDocenteCalculado: number;
   gastoTotalOperativo: number;
@@ -724,6 +751,91 @@ export interface ProyectoEducativo {
   totalGananciasFinales: number;
   puntoEquilibrioAlumnos: number;
   roiPorcentaje: number;
+}
+
+// Tipos y Modelos para Publicidad Digital & Flyers de Redes Sociales (Gerencia Comercial)
+export type FormatoPublicidad = 'cuadrado' | 'story' | 'retrato' | 'banner' | 'paisaje';
+export type TemaVisualPublicidad = 'summit_corporativo' | 'dark_tech' | 'ejecutivo_prestigio' | 'esmeralda_crecimiento';
+export type TonoVozPublicidad = 'ejecutivo_formal' | 'urgente_persuasivo' | 'academico_prestigio' | 'cercano_dinamico';
+
+export interface InfoFormatoPublicidad {
+  id: FormatoPublicidad;
+  nombre: string;
+  relacionAspecto: string; // '1:1', '9:16', '4:5', '16:9', '1.91:1'
+  ancho: number;
+  alto: number;
+  redesRecomendadas: string[];
+  descripcion: string;
+  etiquetaUso: string;
+  badgePopular?: string;
+}
+
+export interface PlantillaHashtags {
+  id: string;
+  nombre: string;
+  categoria?: string;
+  hashtags: string[];
+}
+
+export interface PlantillaCTA {
+  id: string;
+  texto: string;
+  subtexto?: string;
+  canalRecomendado?: 'whatsapp' | 'web' | 'directo';
+}
+
+export interface PreferenciasRedesSocialesComercial {
+  tonoVozPredeterminado: TonoVozPublicidad;
+  formatoPredeterminado?: FormatoPublicidad;
+  ctaPredeterminadoId: string;
+  plantillaHashtagsActivaId: string;
+  plantillasHashtags: PlantillaHashtags[];
+  plantillasCTA: PlantillaCTA[];
+  telefonoWhatsAppPredeterminado?: string;
+  linkRegistroPredeterminado?: string;
+  piePaginaPredeterminado?: string;
+  fechaActualizacion?: string;
+}
+
+export interface CamposSeleccionadosPublicidad {
+  incluirTitulo: boolean;
+  incluirSubtitulo: boolean;
+  incluirBadgeModalidad: boolean;
+  incluirDocente: boolean;
+  incluirFechasHorario: boolean;
+  incluirHorasCertificacion: boolean;
+  incluirTemario: boolean;
+  incluirPrecio: boolean;
+  incluirDescuentoPreventa: boolean;
+  incluirCuposUrgencia: boolean;
+  incluirContactoWhatsApp: boolean;
+  incluirLogoYCertificacion: boolean;
+  incluirHashtags?: boolean;
+}
+
+export interface TextosPersonalizadosPublicidad {
+  titularGancho?: string;
+  subtitulo?: string;
+  docenteTitulo?: string;
+  temasDestacados?: string[];
+  mensajeUrgencia?: string;
+  telefonoContacto?: string;
+  linkRegistro?: string;
+  notaPie?: string;
+  precioPersonalizado?: number;
+  precioPreventaPersonalizado?: number;
+  tonoVoz?: TonoVozPublicidad;
+  ctaTexto?: string;
+  hashtags?: string[];
+}
+
+export interface PublicidadRedesSocialesConfig {
+  formato: FormatoPublicidad;
+  temaVisual: TemaVisualPublicidad;
+  camposSeleccionados: CamposSeleccionadosPublicidad;
+  textosPersonalizados: TextosPersonalizadosPublicidad;
+  fechaUltimaGeneracion?: string;
+  historialGeneraciones?: number;
 }
 
 export type Moneda = 'LPS' | 'USD' | 'EUR' | 'MXN';
@@ -863,5 +975,47 @@ export interface AlertaCierreMensual {
   titulo: string;
   mensaje: string;
   accionSugerida: string;
+}
+
+export type TipoEventoCriticoWebPush =
+  | 'aprobacion_gg'
+  | 'rechazo_gg'
+  | 'nuevo_silabo'
+  | 'cambio_estado'
+  | 'cierre_poa'
+  | 'aforo_critico';
+
+export interface EventoCriticoProyecto {
+  id?: string;
+  tipo: TipoEventoCriticoWebPush;
+  titulo: string;
+  cuerpo: string;
+  gerenciaDestino: 'gerencia-general' | 'gerencia-academica' | 'gerencia-comercializacion' | 'todas';
+  gerenciaOrigen?: 'gerencia-general' | 'gerencia-academica' | 'gerencia-comercializacion' | 'sistema';
+  proyectoId?: string;
+  codigoEmpresa?: string;
+  correlativoSAR?: string;
+  nombreProyecto?: string;
+  estadoNuevo?: string;
+  fechaHora?: string;
+  vistaDestino?: VistaPrincipal;
+  accionEtiqueta?: string;
+}
+
+export interface ConfiguracionWebPush {
+  habilitado: boolean;
+  gerenciaObjetivo: 'todas' | 'general' | 'academica' | 'comercializacion';
+  eventos: {
+    aprobacionGG: boolean;
+    rechazoGG: boolean;
+    nuevoSilabo: boolean;
+    cambioEstadoProyecto: boolean;
+    cierreMensualPOA: boolean;
+    alertaAforoCupos: boolean;
+  };
+  sonidoHabilitado: boolean;
+  vibracionHabilitada: boolean;
+  ultimaSuscripcionFecha?: string;
+  endpointSuscripcion?: string;
 }
 

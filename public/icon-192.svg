@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <radialGradient id="summitGlobeGrad" cx="38%" cy="32%" r="65%" fx="35%" fy="28%">
+      <stop offset="0%" stopColor="#4A90E2" />
+      <stop offset="25%" stopColor="#2563EB" />
+      <stop offset="60%" stopColor="#1D4ED8" />
+      <stop offset="85%" stopColor="#0F2C69" />
+      <stop offset="100%" stopColor="#071638" />
+    </radialGradient>
+    <linearGradient id="summitRingGrad" x1="10%" y1="90%" x2="90%" y2="10%">
+      <stop offset="0%" stopColor="#64748B" />
+      <stop offset="25%" stopColor="#CBD5E1" />
+      <stop offset="50%" stopColor="#FFFFFF" />
+      <stop offset="75%" stopColor="#94A3B8" />
+      <stop offset="100%" stopColor="#334155" />
+    </linearGradient>
+    <linearGradient id="summitPeakLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#FFFFFF" />
+      <stop offset="40%" stopColor="#F1F5F9" />
+      <stop offset="80%" stopColor="#CBD5E1" />
+      <stop offset="100%" stopColor="#94A3B8" />
+    </linearGradient>
+    <linearGradient id="summitPeakDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#94A3B8" />
+      <stop offset="50%" stopColor="#64748B" />
+      <stop offset="100%" stopColor="#334155" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded plate -->
+  <rect width="192" height="192" rx="40" fill="#0B1B3D" />
+
+  <!-- Outer Glow -->
+  <circle cx="96" cy="96" r="76" fill="#1D4ED8" opacity="0.25" />
+
+  <!-- 3D Globe Sphere -->
+  <circle cx="96" cy="96" r="62" fill="url(#summitGlobeGrad)" stroke="#60A5FA" stroke-width="2" />
+
+  <!-- Mountain Peaks (Summit) -->
+  <g transform="translate(-4, 0)">
+    <!-- Central Peak -->
+    <polygon points="100,48 76,122 100,116" fill="url(#summitPeakLight)" />
+    <polygon points="100,48 100,116 124,122" fill="url(#summitPeakDark)" />
+    
+    <!-- Secondary Left Peak -->
+    <polygon points="76,66 56,118 76,114" fill="url(#summitPeakLight)" opacity="0.9" />
+    <polygon points="76,66 76,114 90,120" fill="url(#summitPeakDark)" opacity="0.9" />
+    
+    <!-- Secondary Right Peak -->
+    <polygon points="122,72 106,120 122,116" fill="url(#summitPeakLight)" opacity="0.9" />
+    <polygon points="122,72 122,116 138,122" fill="url(#summitPeakDark)" opacity="0.9" />
+  </g>
+
+  <!-- Orbital Ring -->
+  <ellipse cx="96" cy="116" rx="76" ry="24" fill="none" stroke="url(#summitRingGrad)" stroke-width="4.5" transform="rotate(-15 96 116)" />
+
+  <!-- Star accents -->
+  <polygon points="152,50 155,56 161,59 155,62 152,68 149,62 143,59 149,56" fill="#F8FAFC" />
+  <polygon points="44,142 46,146 50,148 46,150 44,154 42,150 38,148 42,146" fill="#F8FAFC" opacity="0.8" />
+</svg>

@@ -442,23 +442,27 @@ export function generarSilaboPdfOficial(datos: DatosGeneracionSilabo, autoDescar
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text('Dirección Académica & Calidad', f2X + colW / 2, currentY + 4, { align: 'center' });
+  doc.text('Phd. Donal Reyes', f2X + colW / 2, currentY + 4, { align: 'center' });
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text('Validación Curricular & Pedagógica', f2X + colW / 2, currentY + 7.5, { align: 'center' });
+  doc.text('Dirección de Gerencia Académica', f2X + colW / 2, currentY + 7.5, { align: 'center' });
 
-  // Firma 3: Gerencia General
+  // Firma 3: Gerencia General (Aprobación y Auditoría)
   const f3X = margin + (colW + 5) * 2;
   doc.line(f3X, currentY, f3X + colW, currentY);
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text('Gerencia General', f3X + colW / 2, currentY + 4, { align: 'center' });
+  doc.text('Dr. Walter Rene Pedroza', f3X + colW / 2, currentY + 4, { align: 'center' });
   doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(5, 150, 105);
+  doc.text('Aprobado por Gerencia General', f3X + colW / 2, currentY + 7.5, { align: 'center' });
+  doc.setFontSize(5.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text('Summit Impulsa S. de R.L.', f3X + colW / 2, currentY + 7.5, { align: 'center' });
+  doc.text('Seguridad y Auditoría Institucional', f3X + colW / 2, currentY + 10.5, { align: 'center' });
 
   // Pie de página estandarizado en todas las páginas generadas
   agregarPieDePaginaOficialPDF(doc, {

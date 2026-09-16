@@ -426,7 +426,13 @@ export const ProjectExecutiveReportModal: React.FC<ProjectExecutiveReportModalPr
                   </div>
                   <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200 font-bold text-blue-900">
                     <span className="font-sans">Precio Total Facturado Alumno:</span>
-                    <span className="text-sm">{formatearMoneda(proyecto.precioSugeridoConISV || proyecto.precioSugeridoAlumno, moneda)}</span>
+                    <span className="text-sm">
+                      {formatearMoneda(
+                        proyecto.precioSugeridoConISV || 
+                        ((proyecto.precioSugeridoAlumno || 0) + (proyecto.aplicaISV ? (proyecto.isvPorAlumno || 0) : 0)), 
+                        moneda
+                      )}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100 text-slate-600 font-sans">
                     <span>Total ISV a Trasladar a SAR ({proyecto.alumnosFinal} alum):</span>

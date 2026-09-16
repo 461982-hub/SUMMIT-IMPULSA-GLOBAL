@@ -116,10 +116,11 @@ export const CommercialCockpitDailyView: React.FC<CommercialCockpitDailyViewProp
             <button
               type="button"
               onClick={() => onAbrirComercializarProyecto()}
-              className="px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl border border-emerald-500/50 flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+              className="px-3.5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs rounded-xl border border-emerald-300 flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+              title="Comercializar Sílabo / Proyecto (Precios, Campaña de Matrícula y Embudo)"
             >
-              <Rocket className="w-4 h-4 text-amber-300" />
-              <span>Comercializar Curso</span>
+              <Rocket className="w-4 h-4 text-slate-950 stroke-[2.5]" />
+              <span>Comercializar Sílabo/Proyecto</span>
             </button>
           </div>
         </div>

@@ -369,7 +369,7 @@ export function validarAprobacionGerenciaGeneral(p: ProyectoEducativo): Validaci
 
   // Bloqueo si el proceso está cerrado institucionalmente
   if (p.seLlevoACabo === 'No se llevó a cabo' || p.procesoCerrado) {
-    bloqueos.push('El proyecto está cerrado institucionalmente (No se llevó a cabo por cumplimiento del plazo de 20 días calendario).');
+    bloqueos.push('El proyecto está cerrado institucionalmente (No se llevó a cabo por cumplimiento del plazo de 25 días hábiles).');
   }
 
   // Validaciones académicas
@@ -384,11 +384,11 @@ export function validarAprobacionGerenciaGeneral(p: ProyectoEducativo): Validaci
   }
 
   // Validaciones comerciales
-  if (!diagCom.autorizado) {
-    bloqueos.push('Gerencia de Comercialización no ha remitido ni autorizado la venta del proyecto.');
+  if (!diagCom.autorizado && !p.inicioCursoHabilitadoComercial) {
+    bloqueos.push('Gerencia de Comercialización no ha remitido ni autorizado el inicio del curso.');
   }
-  if ((Number(p.alumnosFinal) || 0) < 4) {
-    bloqueos.push(`Matrícula insuficiente: cuenta con ${p.alumnosFinal || 0} alumnos. El mínimo institucional es de 4 inscritos pagados.`);
+  if ((Number(p.alumnosFinal) || 0) < 6) {
+    bloqueos.push(`Matrícula insuficiente: cuenta con ${p.alumnosFinal || 0} alumnos. El mínimo institucional para dar inicio al curso es de 6 inscritos.`);
   }
   if (!p.metodoVenta) {
     alertas.push('Canal de venta principal no especificado formalmente.');
@@ -430,14 +430,14 @@ export function validarAprobacionGerenciaGeneral(p: ProyectoEducativo): Validaci
     },
     {
       gerencia: 'Comercialización' as const,
-      item: 'Base Mínima de 4 Alumnos Inscritos',
-      cumplido: (Number(p.alumnosFinal) || 0) >= 4,
+      item: 'Base Mínima de 6 Alumnos Matriculados',
+      cumplido: (Number(p.alumnosFinal) || 0) >= 6,
       critico: true,
     },
     {
       gerencia: 'Comercialización' as const,
-      item: 'Autorización y Firma Comercial',
-      cumplido: Boolean(p.autorizacionComercial || p.comercializacionCompletada),
+      item: 'Inicio de Curso Formalizado por Comercialización',
+      cumplido: Boolean(p.inicioCursoHabilitadoComercial || p.autorizacionComercial || p.comercializacionCompletada),
       critico: true,
     },
   ];

@@ -38,7 +38,12 @@ import {
   TrendingUp,
   AlertCircle,
   Info,
-  ArrowRight
+  ArrowRight,
+  Send,
+  XCircle,
+  Scale,
+  Target,
+  BarChart3
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda, NivelProyecto, TipoProyecto, TipoServicioFiscal } from '../../types';
 import { SummitLogo } from '../SummitLogo';
@@ -63,6 +68,9 @@ export interface OfficialSyllabusModalProps {
   onGuardarProyecto?: (p: ProyectoEducativo) => void;
   onCrearProyecto?: (p: ProyectoEducativo) => void;
   onEliminarProyecto?: (p: ProyectoEducativo) => void;
+  rolActual?: 'academica' | 'gerencia_general' | 'comercializacion' | 'admin';
+  onAprobarGG?: (p: ProyectoEducativo) => void;
+  onRechazarGG?: (p: ProyectoEducativo, motivo: string) => void;
 }
 
 export const OfficialSyllabusModal: React.FC<OfficialSyllabusModalProps> = ({
@@ -75,6 +83,9 @@ export const OfficialSyllabusModal: React.FC<OfficialSyllabusModalProps> = ({
   onGuardarProyecto,
   onCrearProyecto,
   onEliminarProyecto,
+  rolActual = 'academica',
+  onAprobarGG,
+  onRechazarGG,
 }) => {
   // Lista de proyectos y sílabos disponibles: dar prioridad a sílabos creados
   const silabosRegistrados = useMemo(() => {
@@ -107,6 +118,10 @@ export const OfficialSyllabusModal: React.FC<OfficialSyllabusModalProps> = ({
     notaMinimaAprobacion: 75,
     asistenciaMinimaPct: 80,
   });
+
+  // Estados para Dictamen de Gerencia General (Aprobación / Rechazo)
+  const [modalRechazoAbierto, setModalRechazoAbierto] = useState(false);
+  const [motivoRechazoTexto, setMotivoRechazoTexto] = useState('');
 
   // Estados para Banco de Docentes
   const [bancoDocentes, setBancoDocentes] = useState<DocenteBanco[]>(() => obtenerBancoDocentes());
@@ -335,7 +350,7 @@ export const OfficialSyllabusModal: React.FC<OfficialSyllabusModalProps> = ({
         : 40,
       alumnosProyectados: proyectoActual.alumnosProyectados ?? 6,
       alumnosFinal: proyectoActual.alumnosFinal ?? 6,
-      aplicaISV: proyectoActual.aplicaISV ?? false,
+      aplicaISV: proyectoActual.aplicaISV !== undefined ? proyectoActual.aplicaISV : true,
     });
   }, [proyectoActual]);
 
@@ -357,13 +372,94 @@ export const OfficialSyllabusModal: React.FC<OfficialSyllabusModalProps> = ({
         : 40,
       alumnosProyectados: proyectoEditando.alumnosProyectados ?? 6,
       alumnosFinal: proyectoEditando.alumnosFinal ?? 6,
-      aplicaISV: proyectoEditando.aplicaISV ?? false,
+      aplicaISV: proyectoEditando.aplicaISV !== undefined ? proyectoEditando.aplicaISV : true,
     } as any);
   }, [proyectoEditando]);
 
   const reglaFiscalEditando = useMemo(() => {
     return obtenerReglaISVPorServicio(proyectoEditando?.servicioFiscal || 'Capacitación profesional / Mentoría ejecutiva');
   }, [proyectoEditando?.servicioFiscal]);
+
+  const simboloMoneda = (moneda === 'USD') ? '$' : 'L.';
+
+  // SUGERENCIA AUTOMÁTICA DE AUDITORÍA INSTITUCIONAL BASADA EN POA 2026, RENTABILIDAD, PUNTO DE EQUILIBRIO Y GANANCIAS
+  const auditoriaSugerencia = useMemo(() => {
+    if (!proyectoActual || !metricas) return null;
+
+    const horas = proyectoActual.horasClase || 12;
+    const tarifaDocente = proyectoActual.tarifaHoraDocente ?? 200;
+    const costoDocente = metricas.costoDocenteCalculado ?? (horas * tarifaDocente);
+    const costoTotal = metricas.gastoTotalOperativo || 0;
+    const margenPct = metricas.margenGananciaOperativa || proyectoActual.margenGananciaOperativa || 40;
+    const alumnosMin = proyectoActual.alumnosProyectados || 6;
+    const puntoEq = metricas.puntoEquilibrioAlumnos || 0;
+    const gananciaNeta = metricas.totalGananciasFinales || metricas.gananciaOperativa || 0;
+    const ingresoTotal = metricas.ingresoRealTotal || metricas.precioVentaRequerido || 0;
+    const roiPct = Number(metricas?.roiPorcentaje) || (costoTotal > 0 ? (gananciaNeta / costoTotal) * 100 : 0) || 0;
+    const precioUnitario = metricas.precioSugeridoAlumno || 0;
+    const precioConISV = metricas.precioFinalConISV || precioUnitario * (proyectoActual.aplicaISV !== false ? 1.15 : 1);
+
+    // Meta mensual estimada POA 2026: L. 86,580.00 / mes (Consolidado cuatrimestre L. 346,320.00 en 74 grupos)
+    const cuotaMensualPOAHNL = 86580;
+    const contribucionPOAPct = ingresoTotal > 0 ? ((ingresoTotal / cuotaMensualPOAHNL) * 100) : 0;
+
+    // Evaluaciones de los 4 pilares:
+    // 1. Rentabilidad (Mínimo institucional 25%, óptimo >= 35%)
+    const rentabilidadOptima = margenPct >= 35;
+    const rentabilidadAceptable = margenPct >= 25 && margenPct < 35;
+    const rentabilidadDeficiente = margenPct < 25;
+
+    // 2. Punto de Equilibrio (Holgura frente a matrícula mínima de 6 alumnos)
+    const holguraAlumnos = alumnosMin - puntoEq;
+    const puntoEqOptimo = puntoEq <= Math.ceil(alumnosMin * 0.7); // Ej: <= 4 de 6
+    const puntoEqViable = puntoEq <= alumnosMin;
+    const puntoEqDeficitario = puntoEq > alumnosMin;
+
+    // 3. Ganancias
+    const gananciaPositiva = gananciaNeta > 0;
+
+    // 4. Dictamen general sugerido:
+    const esViableParaAprobar = margenPct >= 25 && puntoEqViable && gananciaPositiva;
+
+    // Redacción del Punto de Vista de Auditoría
+    let puntoDeVistaAuditoria = '';
+    let justificacionDetallada = '';
+
+    if (esViableParaAprobar) {
+      puntoDeVistaAuditoria = `Auditoría Institucional emite recomendación FAVORABLE para APROBAR este sílabo y trasladarlo a Gerencia de Comercialización.`;
+      justificacionDetallada = `El programa formativo cumple con los pilares de rentabilidad y sostenibilidad del POA 2026: registra un margen operativo del ${margenPct}% (superior al umbral mínimo del 25%), punto de equilibrio alcanzable con ${puntoEq} alumnos (holgura de seguridad de ${holguraAlumnos} participantes) y una utilidad neta proyectada de ${simboloMoneda} ${gananciaNeta.toLocaleString('es-HN', { minimumFractionDigits: 2 })} con ROI del ${(roiPct || 0).toFixed(1)}%. Además, aporta un ${(contribucionPOAPct || 0).toFixed(1)}% a la meta mensual del POA Sep - Dic 2026, respetando la premisa de autofinanciamiento bootstrapping (capital inicial L. 0.00).`;
+    } else {
+      puntoDeVistaAuditoria = `Auditoría Institucional emite recomendación de RECHAZAR o CONDICIONAR para que Gerencia Académica efectúe ajustes presupuestarios.`;
+      justificacionDetallada = `El proyecto presenta vulnerabilidades frente a las metas del POA 2026: ${rentabilidadDeficiente ? `El margen de ganancia (${margenPct}%) se sitúa por debajo del 25% exigido por la política institucional. ` : ''}${puntoEqDeficitario ? `El punto de equilibrio (${puntoEq} alumnos) sobrepasa la matrícula proyectada (${alumnosMin} alumnos), elevando el riesgo de déficit. ` : ''}${!gananciaPositiva ? 'No genera utilidad neta operativa suficiente. ' : ''}Se sugiere rechazar y solicitar a Phd. Donal Reyes renegociar la tarifa docente (${simboloMoneda} ${tarifaDocente}/h) o reajustar el precio sugerido al alumno.`;
+    }
+
+    return {
+      horas,
+      tarifaDocente,
+      costoDocente,
+      costoTotal,
+      margenPct,
+      alumnosMin,
+      puntoEq,
+      holguraAlumnos,
+      gananciaNeta,
+      ingresoTotal,
+      roiPct,
+      precioUnitario,
+      precioConISV,
+      contribucionPOAPct,
+      rentabilidadOptima,
+      rentabilidadAceptable,
+      rentabilidadDeficiente,
+      puntoEqOptimo,
+      puntoEqViable,
+      puntoEqDeficitario,
+      gananciaPositiva,
+      esViableParaAprobar,
+      puntoDeVistaAuditoria,
+      justificacionDetallada,
+    };
+  }, [proyectoActual, metricas, simboloMoneda]);
 
   // Vinculación y búsqueda con el Banco de Docentes
   const docenteEnBancoEditando = useMemo(() => {
@@ -678,7 +774,7 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
         : 40,
       alumnosProyectados: proyectoEditando.alumnosProyectados ?? 6,
       alumnosFinal: proyectoEditando.alumnosFinal ?? 6,
-      aplicaISV: proyectoEditando.aplicaISV ?? false,
+      aplicaISV: proyectoEditando.aplicaISV !== undefined ? proyectoEditando.aplicaISV : true,
     } as any);
 
     const correlativosAuto = generarSiguienteCorrelativo(
@@ -692,6 +788,8 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
     const codigoProyecto = (proyectoActual as any)?.codigoProyecto || `SIG-ACAD-2026-${String(numCorrelativo).padStart(3, '0')}`;
     const correlativoSAR = (proyectoActual as any)?.correlativoSAR || `000-001-01-${String(numCorrelativo).padStart(8, '0')}`;
     const codigoFiscalSAR = (proyectoActual as any)?.codigoFiscalSAR || (proyectoEditando.aplicaISV ? `SAR-ISV-2026-${String(numCorrelativo).padStart(3, '0')}` : `SAR-EXENTO-2026-${String(numCorrelativo).padStart(3, '0')}`);
+
+    const eraRechazado = Boolean((proyectoActual as any)?.rechazadoPorGerenciaGeneral || (proyectoEditando as any)?.rechazadoPorGerenciaGeneral);
 
     const proyectoActualizado: ProyectoEducativo = {
       ...(proyectoActual as ProyectoEducativo),
@@ -712,6 +810,10 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
       autorizacionAcademica: true,
       fechaAutorizacionAcademica: new Date().toLocaleDateString('es-HN'),
       fechaEnvioRevisionGG: new Date().toISOString(),
+      rechazadoPorGerenciaGeneral: false,
+      corregidoReenviadoRevisionGG: eraRechazado,
+      fechaReenvioRevisionGG: eraRechazado ? new Date().toISOString() : undefined,
+      aprobadoPorGerenciaGeneralPrevia: false,
       horasClase,
       cantidadTemas,
       horasClasePorTema,
@@ -730,9 +832,11 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
     setModo('vista');
     setMensajeAlerta({ 
       tipo: 'exito', 
-      texto: `¡Sílabo Oficial "${proyectoActualizado.nombreProyecto}" registrado como Proyecto! Correlativo Empresa: ${codigoProyecto} | SAR: ${correlativoSAR}. Remitido a Gerencia General para revisión y aprobación previa a comercialización. Notificación enviada a las gerencias.` 
+      texto: eraRechazado
+        ? `¡Sílabo Oficial "${proyectoActualizado.nombreProyecto}" CORREGIDO con éxito! Se subsanaron las observaciones de Gerencia General y se reenvía a Gerencia General para su revisión y dictamen de aprobación previa a comercialización.`
+        : `¡Sílabo Oficial "${proyectoActualizado.nombreProyecto}" registrado como Proyecto! Correlativo Empresa: ${codigoProyecto} | SAR: ${correlativoSAR}. Remitido a Gerencia General para revisión y aprobación previa a comercialización. Notificación enviada a las gerencias.` 
     });
-    setTimeout(() => setMensajeAlerta(null), 5500);
+    setTimeout(() => setMensajeAlerta(null), 6000);
   };
 
   // 4. GUARDAR NUEVO PROGRAMA Y SÍLABO
@@ -767,7 +871,7 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
         : 40,
       alumnosProyectados: proyectoEditando.alumnosProyectados ?? 6,
       alumnosFinal: proyectoEditando.alumnosFinal ?? 6,
-      aplicaISV: proyectoEditando.aplicaISV ?? false,
+      aplicaISV: proyectoEditando.aplicaISV !== undefined ? proyectoEditando.aplicaISV : true,
     } as any);
 
     const correlativosAuto = generarSiguienteCorrelativo(
@@ -906,14 +1010,6 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 bg-blue-500/30 text-blue-200 rounded border border-blue-400/30">
-                  GERENCIA ACADÉMICA
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 bg-amber-500/20 text-amber-200 rounded border border-amber-400/30 hidden sm:inline-flex items-center gap-1.5 shadow-2xs">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  <span>Flujo: Traslado a Gerencia General para Revisión Financiera</span>
-                </span>
-
                 {/* Selector rápido de programas si hay más de uno */}
                 {listaProyectos.length > 1 && modo === 'vista' ? (
                   <div className="relative inline-block">
@@ -941,6 +1037,14 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
                   </span>
                 )}
 
+                {/* Sello de Auditoría de Gerencia General */}
+                {(proyectoActual?.aprobadoPorGerenciaGeneralPrevia || proyectoActual?.etapaFlujo === 'comercializacion') && (
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 bg-emerald-500/25 text-emerald-300 border border-emerald-400/40 rounded flex items-center gap-1">
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span>Aprobado por Gerencia General: Dr. Walter Rene Pedroza</span>
+                  </span>
+                )}
+
                 {modo !== 'vista' && (
                   <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-400/30 rounded">
                     {modo === 'editar' ? 'Modo Actualización' : 'Modo Creación'}
@@ -956,46 +1060,52 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
             </div>
           </div>
 
-          {/* BOTONERA DE ACCIONES DE GERENCIA ACADÉMICA */}
+          {/* BOTONERA DE ACCIONES EN LA MISMA FICHA */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap self-end sm:self-center">
             
             {modo === 'vista' ? (
               <>
-                {/* 0. Botón Crear Sílabo Oficial */}
-                <button
-                  type="button"
-                  id="btn-crear-nuevo-silabo-modal"
-                  onClick={() => handleIniciarCreacion('curso_basico')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition-colors cursor-pointer shadow-xs border border-emerald-400/30"
-                  title="Diseñar y formalizar una nueva estructura curricular oficial (Sílabo Oficial) con correlativo automático"
-                >
-                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>+ Crear Sílabo Oficial</span>
-                </button>
+                {/* 0. Botón Crear Sílabo Oficial (Solo Gerencia Académica) */}
+                {(rolActual === 'academica' || rolActual === 'admin') && (
+                  <button
+                    type="button"
+                    id="btn-crear-nuevo-silabo-modal"
+                    onClick={() => handleIniciarCreacion('curso_basico')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition-colors cursor-pointer shadow-xs border border-emerald-400/30"
+                    title="Diseñar y formalizar una nueva estructura curricular oficial (Sílabo Oficial) con correlativo automático"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>+ Crear Sílabo Oficial</span>
+                  </button>
+                )}
 
-                {/* 1. Botón Actualizar Sílabo */}
-                <button
-                  type="button"
-                  id="btn-actualizar-syllabo"
-                  onClick={handleIniciarEdicion}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-colors cursor-pointer shadow-xs"
-                  title="Editar y actualizar la información pedagógica del sílabo para garantizar su precisión"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>Actualizar</span>
-                </button>
+                {/* 1. Botón Actualizar Sílabo (Solo Gerencia Académica) */}
+                {(rolActual === 'academica' || rolActual === 'admin') && (
+                  <button
+                    type="button"
+                    id="btn-actualizar-syllabo"
+                    onClick={handleIniciarEdicion}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-colors cursor-pointer shadow-xs"
+                    title="Editar y actualizar la información pedagógica del sílabo para garantizar su precisión"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Actualizar</span>
+                  </button>
+                )}
 
-                {/* 2. Botón Borrar / Eliminar */}
-                <button
-                  type="button"
-                  id="btn-eliminar-syllabo"
-                  onClick={() => setConfirmarEliminar(true)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 border border-rose-500/30 text-xs font-bold transition-colors cursor-pointer"
-                  title="Eliminar este programa y sílabo del catálogo institucional"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Eliminar</span>
-                </button>
+                {/* 2. Botón Borrar / Eliminar (Solo Gerencia Académica) */}
+                {(rolActual === 'academica' || rolActual === 'admin') && (
+                  <button
+                    type="button"
+                    id="btn-eliminar-syllabo"
+                    onClick={() => setConfirmarEliminar(true)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 border border-rose-500/30 text-xs font-bold transition-colors cursor-pointer"
+                    title="Eliminar este programa y sílabo del catálogo institucional"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Eliminar</span>
+                  </button>
+                )}
 
                 <div className="h-5 w-px bg-white/20 mx-0.5" />
 
@@ -1041,33 +1151,7 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
                   <span className="sm:hidden">{generandoPdfDescarga ? '...' : 'Guardar PDF'}</span>
                 </button>
               </>
-            ) : (
-              <>
-                {/* Botón Cancelar Edición/Creación */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setModo('vista');
-                    setMensajeAlerta(null);
-                  }}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Cancelar</span>
-                </button>
-
-                {/* Botón Guardar */}
-                <button
-                  type="button"
-                  id="btn-guardar-cambios-syllabo"
-                  onClick={modo === 'editar' ? handleGuardarEdicion : handleGuardarNuevoPrograma}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition-colors cursor-pointer shadow-md"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>{modo === 'editar' ? 'Guardar Sílabo Oficial (Proyecto)' : 'Formalizar Proyecto (Sílabo Oficial)'}</span>
-                </button>
-              </>
-            )}
+            ) : null}
 
             {/* Cerrar Modal */}
             <button
@@ -1080,6 +1164,200 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
             </button>
           </div>
         </div>
+
+        {/* BANNER DE RECHAZO DE GERENCIA GENERAL */}
+        {proyectoActual?.rechazadoPorGerenciaGeneral && (
+          <div className="p-4 bg-rose-100 border-b-2 border-rose-300 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs print:hidden animate-in fade-in duration-150">
+            <div className="flex items-start gap-2.5">
+              <div className="p-2 rounded-lg bg-rose-600 text-white shrink-0 mt-0.5 shadow-2xs">
+                <XCircle className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-rose-950 uppercase tracking-wide">
+                    Sílabo Rechazado por Gerencia General (Devuelto para Corrección)
+                  </span>
+                  {proyectoActual.fechaRechazoGerenciaGeneral && (
+                    <span className="text-[10px] text-rose-800 font-mono bg-rose-200/80 px-2 py-0.5 rounded">
+                      {new Date(proyectoActual.fechaRechazoGerenciaGeneral).toLocaleString('es-HN')}
+                    </span>
+                  )}
+                </div>
+                <p className="text-rose-900 font-semibold bg-white/90 p-2.5 rounded-lg border border-rose-200">
+                  <span className="font-black text-rose-950">Razón del Rechazo emitida por GG: </span>
+                  "{proyectoActual.motivoRechazoGerenciaGeneral || proyectoActual.observacionesRevisionGeneral || 'Revisar costos operativos, honorarios o carga horaria para viabilidad institucional.'}"
+                </p>
+              </div>
+            </div>
+
+            {modo === 'vista' && (rolActual === 'academica' || rolActual === 'admin') && (
+              <button
+                type="button"
+                id="btn-corregir-silabo-desde-modal"
+                onClick={handleIniciarEdicion}
+                className="px-4 py-2 bg-gradient-to-r from-rose-600 to-indigo-700 hover:from-rose-500 hover:to-indigo-600 text-white text-xs font-black rounded-xl shadow-md shrink-0 flex items-center justify-center gap-2 cursor-pointer transition-all self-end md:self-center"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>🛠️ Corregir Sílabo Ahora</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* BANNER DE APROBACIÓN DE GERENCIA GENERAL */}
+        {proyectoActual?.aprobadoPorGerenciaGeneralPrevia && (
+          <div className="p-4 bg-emerald-50 border-b-2 border-emerald-300 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs print:hidden animate-in fade-in duration-150">
+            <div className="flex items-start gap-2.5">
+              <div className="p-2 rounded-lg bg-emerald-600 text-white shrink-0 mt-0.5 shadow-2xs">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-emerald-950 uppercase tracking-wide">
+                    Dictamen de Aprobación de Gerencia General (Habilitado para Comercialización)
+                  </span>
+                  <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded">
+                    Aprobado
+                  </span>
+                  {proyectoActual.fechaAprobacionGerenciaGeneralPrevia && (
+                    <span className="text-[10px] text-emerald-800 font-mono bg-emerald-100 px-2 py-0.5 rounded">
+                      {new Date(proyectoActual.fechaAprobacionGerenciaGeneralPrevia).toLocaleString('es-HN')}
+                    </span>
+                  )}
+                </div>
+                <p className="text-emerald-900 font-semibold bg-white/90 p-2.5 rounded-lg border border-emerald-200">
+                  <span className="font-black text-emerald-950">Fundamento de Aprobación emitido por GG: </span>
+                  "{proyectoActual.motivoAprobacionGerenciaGeneral || proyectoActual.observacionesRevisionGeneral || 'Viabilidad pedagógica y financiera con ISV 15% revisada y aprobada formalmente. Sílabo habilitado para comercialización y venta.'}"
+                </p>
+                <div className="text-[11px] text-emerald-800 font-medium">
+                  Firmado digitalmente por: <strong>{proyectoActual.aprobadoPor || 'Dr. Walter Rene Pedroza (Gerente General)'}</strong> • Trasladado a <strong>Gerencia de Comercialización</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {modo === 'editar' && (proyectoActual?.rechazadoPorGerenciaGeneral || proyectoEditando?.rechazadoPorGerenciaGeneral) && (
+          <div className="p-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between text-xs text-amber-900 print:hidden font-medium">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Modo Corrección Activo:</strong> Realice los ajustes al sílabo (costos, módulos, docente o precios). Al guardar, se enviará de nuevo a Gerencia General para su revisión y dictamen de aprobación previa a comercialización.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* SUBMODAL: DICTAMEN DE RECHAZO DE GERENCIA GENERAL */}
+        {modalRechazoAbierto && proyectoActual && (
+          <div className="p-4 bg-rose-50 border-b-2 border-rose-300 flex flex-col gap-3 text-xs print:hidden animate-in fade-in duration-150">
+            <div className="flex items-start gap-2.5">
+              <div className="p-2 rounded-lg bg-rose-600 text-white shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1 w-full">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-black text-rose-950 text-sm">
+                    Rechazar Sílabo y Devolver a Gerencia Académica para Corrección
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setModalRechazoAbierto(false)}
+                    className="text-slate-400 hover:text-slate-700 font-bold cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <p className="text-rose-900 text-xs">
+                  Ingrese la razón detallada por la cual Gerencia General rechaza el sílabo de "{proyectoActual.nombreProyecto}". Esta justificación aparecerá en la sección de Rechazados de Gerencia Académica para su debida corrección.
+                </p>
+
+                {/* Diagnóstico Automático de Auditoría */}
+                {auditoriaSugerencia && (
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setMotivoRechazoTexto(auditoriaSugerencia.justificacionDetallada)}
+                      className="w-full p-2.5 bg-rose-100 hover:bg-rose-200 border border-rose-300 text-rose-950 text-xs font-bold rounded-lg transition-colors text-left flex items-center justify-between cursor-pointer shadow-2xs"
+                      title="Cargar la justificación técnica automática formulada por Auditoría Institucional con base en el POA 2026"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-rose-700 shrink-0" />
+                        <span>⚡ Cargar Justificación Técnica de Auditoría (POA 2026)</span>
+                      </span>
+                      <span className="text-[10px] bg-rose-200 text-rose-900 px-2 py-0.5 rounded font-mono font-bold">Autocompletar</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Sugerencias Rápidas */}
+                <div className="pt-2">
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                    Motivos frecuentes (haga clic para seleccionar):
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      'Inconsistencia en costos operativos (papelería, zoom o gastos varios).',
+                      'Margen de ganancia operativa insuficiente para la política institucional (<40%).',
+                      'Tarifa docente fuera de rango para la categoría del instructor.',
+                      'Carga horaria y cantidad de módulos no coinciden con el nivel del curso.',
+                      'Ajustar precio sugerido y cálculo del 15% de impuesto sobre venta (ISV).'
+                    ].map((motivo, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setMotivoRechazoTexto(motivo)}
+                        className="px-2 py-1 bg-white hover:bg-rose-100 text-slate-700 text-[10px] rounded-md border border-slate-300 transition-colors text-left cursor-pointer"
+                      >
+                        {motivo}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <textarea
+                    value={motivoRechazoTexto}
+                    onChange={(e) => setMotivoRechazoTexto(e.target.value)}
+                    rows={3}
+                    placeholder="Escriba aquí la razón específica del rechazo y las correcciones que debe realizar Gerencia Académica..."
+                    className="w-full p-2.5 text-xs bg-white border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 text-slate-900"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalRechazoAbierto(false)}
+                    className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-300 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!motivoRechazoTexto.trim()) {
+                        alert('Debe ingresar la razón del rechazo para orientar la corrección académica.');
+                        return;
+                      }
+                      if (onRechazarGG) {
+                        onRechazarGG(proyectoActual, motivoRechazoTexto.trim());
+                      }
+                      setModalRechazoAbierto(false);
+                      setMensajeAlerta({
+                        tipo: 'error',
+                        texto: `⚠️ Sílabo "${proyectoActual.nombreProyecto}" RECHAZADO y devuelto a Gerencia Académica con las observaciones.`
+                      });
+                    }}
+                    className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black transition-colors cursor-pointer shadow-sm flex items-center gap-1.5"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Confirmar Rechazo y Devolver a Académica</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ALERTA DE MENSAJES Y ACCIONES REALIZADAS */}
         {mensajeAlerta && (
@@ -1148,6 +1426,253 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
              ========================================================================= */
           <div ref={printableAreaRef} className="p-6 sm:p-8 overflow-y-auto space-y-6 text-slate-900 print:p-8 print:overflow-visible font-sans">
             
+            {/* =========================================================================
+                SECCIÓN EJECUTIVA DE AUDITORÍA INSTITUCIONAL Y DICTAMEN GERENCIAL (POA 2026)
+                ========================================================================= */}
+            <div id="seccion-auditoria-poa2026-dictamen" className="print:hidden bg-gradient-to-br from-slate-900 via-slate-850 to-blue-950 text-white p-5 sm:p-6 rounded-2xl shadow-xl border border-blue-900/50 space-y-5">
+              {/* Encabezado del Módulo */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                      <Scale className="w-3 h-3 text-blue-400" />
+                      Auditoría Institucional • POA 2026
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      Diagnóstico Financiero y Factibilidad
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                    <span>Dictamen Ejecutivo de Gerencia General</span>
+                    <span className="text-xs font-medium text-blue-300">
+                      (Dr. Walter Rene Pedroza)
+                    </span>
+                  </h3>
+                </div>
+
+                {/* Sello o Estado de Dictamen */}
+                {proyectoActual.aprobadoPorGerenciaGeneralPrevia || proyectoActual.aprobadoPor ? (
+                  <div className="inline-flex items-center gap-2 bg-emerald-500/20 border border-emerald-400/50 px-3.5 py-2 rounded-xl text-emerald-300 text-xs font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <div className="font-black">Aprobado por Gerencia General</div>
+                      <div className="text-[10px] text-emerald-200 font-mono font-normal">
+                        {proyectoActual.aprobadoPor || 'Dr. Walter Rene Pedroza'}
+                        {proyectoActual.fechaRevisionGerenciaGeneral ? ` • ${proyectoActual.fechaRevisionGerenciaGeneral}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                ) : proyectoActual.rechazadoPorGerenciaGeneral ? (
+                  <div className="inline-flex items-center gap-2 bg-rose-500/20 border border-rose-400/50 px-3.5 py-2 rounded-xl text-rose-300 text-xs font-bold">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <div>
+                      <div className="font-black">Retornado para Corrección</div>
+                      <div className="text-[10px] text-rose-200 font-mono font-normal">
+                        Observación enviada a Gerencia Académica
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-2 bg-amber-500/20 border border-amber-400/50 px-3.5 py-2 rounded-xl text-amber-300 text-xs font-bold">
+                    <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                    <div>
+                      <div className="font-black">Pendiente de Dictamen Oficial</div>
+                      <div className="text-[10px] text-amber-200 font-normal">
+                        Revisión requerida antes de comercializar
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 4 Tarjetas de Fundamentación POA 2026 */}
+              {auditoriaSugerencia && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* 1. Rentabilidad */}
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 space-y-2 backdrop-blur-xs">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                        1. Rentabilidad
+                      </span>
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                        auditoriaSugerencia.rentabilidadOptima 
+                          ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/30' 
+                          : auditoriaSugerencia.rentabilidadAceptable 
+                          ? 'bg-blue-500/30 text-blue-300 border border-blue-500/30' 
+                          : 'bg-rose-500/30 text-rose-300 border border-rose-500/30'
+                      }`}>
+                        {auditoriaSugerencia.margenPct}% Margen
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-xl font-black text-white font-mono">
+                        {(Number(auditoriaSugerencia?.roiPct) || 0).toFixed(1)}% <span className="text-xs font-normal text-slate-400">ROI</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-tight">
+                        {auditoriaSugerencia.rentabilidadDeficiente 
+                          ? 'Margen inferior al piso institucional del 25%.' 
+                          : 'Cumple holgadamente el criterio de rentabilidad institucional.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 2. Punto de Equilibrio */}
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 space-y-2 backdrop-blur-xs">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <Target className="w-3.5 h-3.5 text-indigo-400" />
+                        2. Punto de Equilibrio
+                      </span>
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                        auditoriaSugerencia.puntoEqDeficitario 
+                          ? 'bg-rose-500/30 text-rose-300 border border-rose-500/30' 
+                          : 'bg-indigo-500/30 text-indigo-300 border border-indigo-500/30'
+                      }`}>
+                        {auditoriaSugerencia.puntoEq} de {auditoriaSugerencia.alumnosMin} Alumnos
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-xl font-black text-white font-mono">
+                        {auditoriaSugerencia.holguraAlumnos >= 0 ? `+${auditoriaSugerencia.holguraAlumnos}` : auditoriaSugerencia.holguraAlumnos} <span className="text-xs font-normal text-slate-400">Holgura Segura</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-tight">
+                        {auditoriaSugerencia.puntoEqDeficitario
+                          ? 'Riesgo de déficit: requiere más alumnos de los proyectados.'
+                          : `Costos fijos cubiertos con los primeros ${auditoriaSugerencia.puntoEq} alumnos.`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 3. Ganancias Proyectadas */}
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 space-y-2 backdrop-blur-xs">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+                        3. Ganancia Neta
+                      </span>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-300 border border-amber-500/30">
+                        Proyectada
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-lg font-black text-amber-300 font-mono">
+                        {simboloMoneda} {auditoriaSugerencia.gananciaNeta.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <p className="text-[10px] text-slate-300 leading-tight">
+                        Costos: {simboloMoneda} {auditoriaSugerencia.costoTotal.toLocaleString('es-HN', { minimumFractionDigits: 2 })} (Docente: {simboloMoneda} {auditoriaSugerencia.costoDocente.toLocaleString('es-HN')}).
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 4. Alineación POA 2026 */}
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 space-y-2 backdrop-blur-xs">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                        4. POA 2026 (Sep-Dic)
+                      </span>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-cyan-500/30 text-cyan-300 border border-cyan-500/30">
+                        Bootstrapping
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-xl font-black text-cyan-300 font-mono">
+                        {(Number(auditoriaSugerencia?.contribucionPOAPct) || 0).toFixed(1)}% <span className="text-xs font-normal text-slate-400">Cuota/Mes</span>
+                      </div>
+                      <p className="text-[10px] text-slate-300 leading-tight">
+                        Aporte a meta mensual L. 86,580. Modelo autofinanciable con capital inicial L. 0.00.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Caja de Sugerencia Automática de Auditoría Institucional */}
+              {auditoriaSugerencia && (
+                <div className={`p-4 rounded-xl border transition-all ${
+                  auditoriaSugerencia.esViableParaAprobar
+                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100'
+                    : 'bg-rose-950/40 border-rose-500/40 text-rose-100'
+                }`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className={`w-4 h-4 ${auditoriaSugerencia.esViableParaAprobar ? 'text-emerald-400' : 'text-rose-400'} shrink-0`} />
+                      <span className="font-black text-xs uppercase tracking-wide">
+                        Sugerencia Automática de Auditoría Institucional (Base POA 2026):
+                      </span>
+                    </div>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                      auditoriaSugerencia.esViableParaAprobar
+                        ? 'bg-emerald-500 text-white shadow-xs'
+                        : 'bg-rose-500 text-white shadow-xs'
+                    }`}>
+                      {auditoriaSugerencia.esViableParaAprobar ? '✓ Recomendación: APROBAR' : '✗ Recomendación: RECHAZAR / AJUSTAR'}
+                    </span>
+                  </div>
+                  <p className="text-xs leading-relaxed opacity-95">
+                    <strong>{auditoriaSugerencia.puntoDeVistaAuditoria}</strong> {auditoriaSugerencia.justificacionDetallada}
+                  </p>
+                </div>
+              )}
+
+              {/* BOTONERA PRINCIPAL DE DECISIÓN DE GERENCIA GENERAL */}
+              <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span>
+                    <strong className="text-slate-200">Seguridad & Auditoría: </strong>
+                    Aprobado por gerencia general. Dr. Walter Rene Pedroza.
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {/* Opción Rechazar y Regresar a Académica */}
+                  {(onRechazarGG || rolActual === 'gerencia_general') && (
+                    <button
+                      type="button"
+                      id="btn-auditoria-rechazar-gg"
+                      onClick={() => {
+                        if (auditoriaSugerencia) {
+                          setMotivoRechazoTexto(auditoriaSugerencia.justificacionDetallada);
+                        } else {
+                          setMotivoRechazoTexto('');
+                        }
+                        setModalRechazoAbierto(true);
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white font-bold text-xs transition-all shadow-md hover:shadow-rose-600/20 flex items-center gap-2 cursor-pointer border border-rose-400/40"
+                      title="Rechazar y devolver a Gerencia Académica con la justificación técnica"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Rechazar y Regresar a Académica</span>
+                    </button>
+                  )}
+
+                  {/* Opción Aprobar y Enviar a Comercialización */}
+                  {(onAprobarGG || rolActual === 'gerencia_general') && (
+                    <button
+                      type="button"
+                      id="btn-auditoria-aprobar-gg"
+                      onClick={() => {
+                        if (onAprobarGG) {
+                          onAprobarGG(proyectoActual);
+                        }
+                        setMensajeAlerta({
+                          tipo: 'exito',
+                          texto: `✅ Sílabo Oficial "${proyectoActual.nombreProyecto}" APROBADO por Gerencia General (Dr. Walter Rene Pedroza) y trasladado a Comercialización conforme al POA 2026.`
+                        });
+                      }}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-black text-xs transition-all shadow-lg hover:shadow-emerald-500/25 flex items-center gap-2 cursor-pointer border border-emerald-300/40"
+                      title="Aprobar sílabo y trasladarlo a Gerencia de Comercialización para venta inmediata"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>Aprobar y Enviar a Comercialización</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Encabezado Membretado Oficial */}
             <div className="border-b-2 border-blue-900 pb-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1651,7 +2176,10 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
                   <div className="flex items-center justify-between text-xs font-black text-amber-300 pt-1.5 border-t border-blue-800/80">
                     <span className="uppercase tracking-wider">Precio Final Sugerido por Alumno (con ISV):</span>
                     <span className="font-mono text-sm text-emerald-300 font-black">
-                      {formatearMoneda(metricas?.precioFinalAlumnoConISV || metricas?.precioSugeridoAlumno || 0, monedaFormato)}
+                      {formatearMoneda(
+                        (metricas?.precioSugeridoAlumno || 0) + (proyectoActual.aplicaISV ? (metricas?.isvPorAlumno || 0) : 0),
+                        monedaFormato
+                      )}
                     </span>
                   </div>
                 </div>
@@ -1664,48 +2192,9 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
               </div>
             </div>
 
-            {/* 13. Cuadro de Firmas Oficiales (DIRECCIÓN ACADÉMICA: Phd. Donal Reyes) */}
-            <div className="pt-6 border-t-2 border-slate-300">
-              <div className="grid grid-cols-2 gap-8 text-center pt-8">
-                <div>
-                  <div className="w-52 mx-auto border-b-2 border-slate-900 pb-1 mb-1">
-                    <div className="font-serif italic text-slate-800 text-base font-semibold tracking-wide">
-                      Phd. Donal Reyes
-                    </div>
-                  </div>
-                  <div className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                    Phd. Donal Reyes
-                  </div>
-                  <div className="text-[10px] text-slate-600 font-bold uppercase">
-                    Dirección de Gerencia Académica
-                  </div>
-                  <div className="text-[9px] text-slate-400 font-medium">
-                    Summit Impulsa Global • Sello de Autorización y Validez Curricular
-                  </div>
-                </div>
-
-                <div>
-                  <div className="w-52 mx-auto border-b-2 border-slate-900 pb-1 mb-1">
-                    <div className="font-serif italic text-slate-800 text-base font-semibold tracking-wide">
-                      {proyectoActual.nombreDocente}
-                    </div>
-                  </div>
-                  <div className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                    {proyectoActual.nombreDocente}
-                  </div>
-                  <div className="text-[10px] text-slate-600 font-bold uppercase">
-                    {proyectoActual.docenteEspecialidad || 'Docente Titular y Facilitador'}
-                  </div>
-                  <div className="text-[9px] text-slate-400 font-medium">
-                    Cuerpo Docente Institucional Acreditado
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* Pie de página institucional */}
             <div className="pt-3 border-t border-slate-200 text-center text-[9px] text-slate-400 font-mono">
-              Documento de control académico interno y público • Summit Impulsa Global • Todos los derechos reservados • Código de Verificación: {codigoOficial} • Autorizado por Phd. Donal Reyes
+              Documento de control académico interno y público • Summit Impulsa Global • Todos los derechos reservados • Código de Verificación: {codigoOficial} • Autorizado por Phd. Donal Reyes y Aprobado por Dr. Walter Rene Pedroza
             </div>
 
           </div>
@@ -1713,7 +2202,19 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
           /* =========================================================================
              2. MODO ACTUALIZACIÓN / CREACIÓN CURRICULAR (FORMULARIO GERENCIA ACADÉMICA)
              ========================================================================= */
-          <div className="p-6 overflow-y-auto space-y-6">
+          <div 
+            className="p-6 overflow-y-auto space-y-6"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.target as HTMLElement)?.tagName === 'INPUT') {
+                e.preventDefault();
+                if (modo === 'editar') {
+                  handleGuardarEdicion();
+                } else {
+                  handleGuardarNuevoPrograma();
+                }
+              }
+            }}
+          >
             
             {/* Banner orientativo del Flujo Institucional */}
             <div className="p-4 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200 rounded-xl flex items-start gap-3">
@@ -2844,7 +3345,10 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
                 <div className="flex items-center justify-between text-xs font-black text-amber-300 pt-1.5 border-t border-blue-800/80">
                   <span className="uppercase tracking-wider">Precio Final Sugerido por Alumno (con ISV):</span>
                   <span className="font-mono text-sm text-emerald-300 font-black">
-                    {formatearMoneda(calculoEditando?.precioFinalAlumnoConISV || calculoEditando?.precioSugeridoAlumno || 0, monedaFormato)}
+                    {formatearMoneda(
+                      (calculoEditando?.precioSugeridoAlumno || 0) + (proyectoEditando.aplicaISV ? (calculoEditando?.isvPorAlumno || 0) : 0),
+                      monedaFormato
+                    )}
                   </span>
                 </div>
               </div>
@@ -2882,77 +3386,6 @@ AUTORIZACIÓN Y VALIDEZ CURRICULAR:
 
           </div>
         )}
-
-        {/* BARRA INFERIOR DE ACCIONES (Print:hidden) */}
-        <div className="px-5 py-3 bg-slate-100 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs print:hidden">
-          <span className="text-slate-600 text-[11px]">
-            {modo === 'vista' ? (
-              <>Sugerencia: Usa <strong>Imprimir en PDF</strong> (o Ctrl + P) o <strong>Guardar en PDF</strong> para descargar el archivo oficial. Firma y Sello: <strong>Phd. Donal Reyes</strong>.</>
-            ) : (
-              <>Flujo Institucional: <strong>Al guardar, el sílabo se transfiere automáticamente a Gerencia General para su revisión y dictamen financiero.</strong></>
-            )}
-          </span>
-          <div className="flex items-center gap-2 flex-wrap">
-            {modo === 'vista' && (
-              <>
-                <button
-                  type="button"
-                  id="btn-footer-crear-silabo"
-                  onClick={() => handleIniciarCreacion('curso_basico')}
-                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                  title="Diseñar y registrar un nuevo Sílabo Oficial"
-                >
-                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>+ Crear Sílabo Oficial</span>
-                </button>
-
-                <button
-                  type="button"
-                  id="btn-footer-imprimir-pdf"
-                  onClick={handlePrint}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                  title="Imprimir documento oficial en PDF o enviar a impresora (Ctrl + P)"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Imprimir en PDF</span>
-                </button>
-
-                <button
-                  type="button"
-                  id="btn-footer-guardar-pdf"
-                  onClick={handleGuardarPDF}
-                  disabled={generandoPdfDescarga}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
-                  title="Guardar y descargar archivo PDF oficial (.pdf)"
-                >
-                  {generandoPdfDescarga ? (
-                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <Download className="w-3.5 h-3.5" />
-                  )}
-                  <span>{generandoPdfDescarga ? 'Generando...' : 'Guardar en PDF'}</span>
-                </button>
-              </>
-            )}
-
-            {modo !== 'vista' && (
-              <button
-                type="button"
-                onClick={() => setModo('vista')}
-                className="px-3 py-1.5 bg-white hover:bg-slate-200 text-slate-700 font-bold rounded-lg border border-slate-300 transition-colors cursor-pointer"
-              >
-                Volver a Vista Previa
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg transition-colors cursor-pointer"
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
 
       </div>
 

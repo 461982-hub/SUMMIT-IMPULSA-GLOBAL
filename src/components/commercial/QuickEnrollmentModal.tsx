@@ -16,14 +16,22 @@ import {
   ExternalLink,
   Users,
   Calendar,
-  Sparkles
+  Sparkles,
+  Rocket,
+  Clock,
+  ArrowRight
 } from 'lucide-react';
+import { 
+  habilitarInicioCursoPorComercializacion, 
+  calcularSlaComercial 
+} from '../../utils/commercialSlaUtils';
 
 interface QuickEnrollmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   proyectos: ProyectoEducativo[];
   proyectoInicial?: ProyectoEducativo | null;
+  proyecto?: ProyectoEducativo | null;
   moneda: Moneda;
   onGuardarProyecto: (proyectoActualizado: ProyectoEducativo) => void;
   onNotificar?: (mensaje: string) => void;
@@ -34,12 +42,13 @@ export const QuickEnrollmentModal: React.FC<QuickEnrollmentModalProps> = ({
   onClose,
   proyectos,
   proyectoInicial,
+  proyecto,
   moneda,
   onGuardarProyecto,
   onNotificar,
 }) => {
   const [proyectoId, setProyectoId] = useState<string>(
-    proyectoInicial?.id || (proyectos.length > 0 ? proyectos[0].id : '')
+    proyecto?.id || proyectoInicial?.id || (proyectos.length > 0 ? proyectos[0].id : '')
   );
 
   const proyectoSeleccionado = proyectos.find((p) => p.id === proyectoId) || proyectos[0];
@@ -151,6 +160,20 @@ En breve tu asesor (${asesorAsignado}) te enviará los accesos al Campus Virtual
     window.open(url, '_blank');
   };
 
+  const handleIniciarCursoDirecto = () => {
+    if (!proyectoSeleccionado) return;
+    try {
+      const proyectoIniciado = habilitarInicioCursoPorComercializacion(proyectoSeleccionado, asesorAsignado);
+      onGuardarProyecto(proyectoIniciado);
+      if (onNotificar) {
+        onNotificar(`🚀 ¡Curso "${proyectoSeleccionado.nombreProyecto}" iniciado formalmente por Comercialización (${proyectoSeleccionado.alumnosFinal} alumnos)! Remitido a Gerencia General para Aprobación Final y Rebaja del POA.`);
+      }
+      onClose();
+    } catch (err: any) {
+      alert(err?.message || 'Error al iniciar curso');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-150">
@@ -195,6 +218,37 @@ En breve tu asesor (${asesorAsignado}) te enviará los accesos al Campus Virtual
                 Se actualizó el aforo a <span className="font-black text-emerald-700 font-mono">{proyectoSeleccionado?.alumnosFinal} inscritos</span> en <strong>{proyectoSeleccionado?.nombreProyecto}</strong>.
               </p>
             </div>
+
+            {/* AVISO INSTITUCIONAL: CUPO DE 6 ALUMNOS CUBIERTO */}
+            {Number(proyectoSeleccionado?.alumnosFinal || 0) >= 6 && !proyectoSeleccionado?.inicioCursoHabilitadoComercial && (
+              <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 text-white rounded-2xl p-4 text-left shadow-lg space-y-2 border border-emerald-400">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-white/20 rounded-lg">
+                    <Rocket className="w-5 h-5 text-amber-300 animate-bounce" />
+                  </div>
+                  <div>
+                    <h5 className="font-black text-sm text-white">
+                      🎯 ¡Cupo Mínimo de 6 Alumnos Cubierto con Éxito ({proyectoSeleccionado?.alumnosFinal}/6)!
+                    </h5>
+                    <p className="text-xs text-emerald-100">
+                      Comercialización tiene la facultad inmediata de comenzar el curso y remitirlo a Gerencia General para su Aprobación Final y Rebaja del POA.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={handleIniciarCursoDirecto}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-all hover:scale-105 cursor-pointer"
+                  >
+                    <Rocket className="w-4 h-4 fill-slate-950" />
+                    <span>🚀 Comenzar Curso y Remitir a GG para Rebaja del POA</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-left text-xs font-mono text-slate-800 whitespace-pre-wrap max-h-36 overflow-y-auto">
               {mensajeBienvenidaWA}
@@ -265,14 +319,28 @@ En breve tu asesor (${asesorAsignado}) te enviará los accesos al Campus Virtual
                 ))}
               </select>
 
-              {proyectoSeleccionado && (
-                <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1.5 px-1">
-                  <span>Docente: <strong>{proyectoSeleccionado.nombreDocente}</strong></span>
-                  <span className="font-mono">
-                    P. Venta: <strong>{formatearMoneda(proyectoSeleccionado.precioSugeridoAlumno, moneda)}</strong>
-                  </span>
-                </div>
-              )}
+              {proyectoSeleccionado && (() => {
+                const sla = calcularSlaComercial(proyectoSeleccionado);
+                return (
+                  <div className="mt-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700 flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                        SLA Institucional: 25 Días Hábiles
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${sla.colorBadge}`}>
+                        {sla.estadoEtiqueta}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                      <span>GG: {sla.diasUsadosGG}/5d • Comercialización: {sla.diasAsignadosComercial}d ({sla.diasRestantesComercial}d rest.)</span>
+                      <span className={`font-black ${sla.cupoMinimoCubierto ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {sla.alumnosMatriculados}/6 Alumnos Mínimos
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Datos del Alumno */}

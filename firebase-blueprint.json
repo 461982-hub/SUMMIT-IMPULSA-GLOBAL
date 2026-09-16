@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "proyecto": {
+      "title": "Proyecto Educativo",
+      "description": "Datos y métricas de rentabilidad y planificación educativa",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador único del proyecto"
+        },
+        "nombre": {
+          "type": "string",
+          "description": "Nombre oficial del proyecto"
+        },
+        "actualizadoEn": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Fecha y hora de última actualización"
+        }
+      },
+      "required": ["id", "nombre"]
+    }
+  },
+  "firestore": {
+    "/proyectos/{proyectoId}": {
+      "schema": "proyecto",
+      "description": "Colección de proyectos educativos registrados"
+    }
+  }
+}

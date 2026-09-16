@@ -64,6 +64,7 @@ interface CostoOperativoBannerPreventivoProps {
   tarifaHoraDocente: number;
   horasClase: number;
   onCambiarUmbral: (nuevoUmbral: number) => void;
+  ingresoTotalEsperado?: number;
 }
 
 export const CostoOperativoBannerPreventivo: React.FC<CostoOperativoBannerPreventivoProps> = ({
@@ -78,6 +79,7 @@ export const CostoOperativoBannerPreventivo: React.FC<CostoOperativoBannerPreven
   tarifaHoraDocente,
   horasClase,
   onCambiarUmbral,
+  ingresoTotalEsperado,
 }) => {
   const [mostrarAjusteUmbral, setMostrarAjusteUmbral] = useState(false);
   const [umbralInput, setUmbralInput] = useState(umbralCritico.toString());
@@ -89,6 +91,11 @@ export const CostoOperativoBannerPreventivo: React.FC<CostoOperativoBannerPreven
 
   const pctDocente = gastoTotalOperativo > 0 ? Math.round((costoDocente / gastoTotalOperativo) * 100) : 0;
   const pctFijos = gastoTotalOperativo > 0 ? Math.round((costosFijos / gastoTotalOperativo) * 100) : 0;
+
+  const pctSobreIngreso = ingresoTotalEsperado && ingresoTotalEsperado > 0 
+    ? (gastoTotalOperativo / ingresoTotalEsperado) * 100 
+    : 0;
+  const excede60PctIngreso = gastoTotalOperativo > 0 && pctSobreIngreso > 60;
 
   const presets = moneda === 'USD' ? PRESETS_UMBRAL_USD : PRESETS_UMBRAL_HNL;
 
@@ -109,7 +116,15 @@ export const CostoOperativoBannerPreventivo: React.FC<CostoOperativoBannerPreven
       {/* Barra de estado y configuración de umbral */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex items-center gap-1.5">
-          {esCritico ? (
+          {gastoTotalOperativo <= 0 ? (
+            <span 
+              id="badge-estado-costo-invalido"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black bg-rose-100 text-rose-900 border border-rose-400 shadow-2xs animate-pulse"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <span>COSTO CERO INVÁLIDO ({formatearMoneda(0, moneda)}) • RESTRICCIÓN DE ENVÍO GG</span>
+            </span>
+          ) : esCritico ? (
             <span 
               id="badge-estado-costo-critico"
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs animate-pulse"
@@ -124,6 +139,17 @@ export const CostoOperativoBannerPreventivo: React.FC<CostoOperativoBannerPreven
             >
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span>Costo Seguro (≤ {formatearMoneda(umbralCritico, moneda)})</span>
+            </span>
+          )}
+
+          {excede60PctIngreso && (
+            <span 
+              id="badge-banner-costo-excede-60-resaltado"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black bg-amber-500 text-slate-950 border-2 border-amber-600 shadow-sm animate-pulse"
+              title={`Alerta: El costo operativo representa el ${pctSobreIngreso.toFixed(1)}% del ingreso total esperado, superando el límite del 60%.`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-slate-950 shrink-0" />
+              <span>⚠️ COSTO &gt; 60% DEL INGRESO ({pctSobreIngreso.toFixed(1)}%)</span>
             </span>
           )}
         </div>

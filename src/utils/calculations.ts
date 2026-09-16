@@ -116,6 +116,7 @@ export function calcularMetricasProyecto(
     tasaISV,
     isvPorAlumno,
     precioSugeridoConISV,
+    precioFinalAlumnoConISV: precioSugeridoConISV,
     isvVentaRequeridaTotal,
     precioVentaRequeridoConISV,
     isvTotalTrasladarSAR,

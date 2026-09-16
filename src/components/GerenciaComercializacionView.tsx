@@ -54,8 +54,9 @@ import {
   ShieldCheck,
   KeyRound,
   Upload,
+  Settings,
 } from 'lucide-react';
-import { ProyectoEducativo, Moneda, MetodoVenta, EstadoProyecto } from '../types';
+import { ProyectoEducativo, Moneda, MetodoVenta, EstadoProyecto, FormatoPublicidad } from '../types';
 import { formatearMoneda, calcularMetricasProyecto } from '../utils/calculations';
 import { emitirAutorizacionComercial } from '../utils/poaMonthlyTrackingUtils';
 import { SummitLogo } from './SummitLogo';
@@ -70,6 +71,10 @@ import { QuickEnrollmentModal } from './commercial/QuickEnrollmentModal';
 import { QuickQuoteWhatsAppModal } from './commercial/QuickQuoteWhatsAppModal';
 import { QuickLeadImporterModal } from './commercial/QuickLeadImporterModal';
 import { CommercialCorporateQuoteModal } from './commercial/CommercialCorporateQuoteModal';
+import { CommercialSocialMediaFlyerModal } from './commercial/CommercialSocialMediaFlyerModal';
+import { CommercialSocialPreferencesModal } from './commercial/CommercialSocialPreferencesModal';
+import { CommercialSocialPreferencesPanel } from './commercial/CommercialSocialPreferencesPanel';
+import { CommercialFormatSelectorModal } from './commercial/CommercialFormatSelectorModal';
 
 interface GerenciaComercializacionViewProps {
   proyectos: ProyectoEducativo[];
@@ -79,12 +84,14 @@ interface GerenciaComercializacionViewProps {
   onGuardarProyecto: (p: ProyectoEducativo) => void;
   onNotificar?: (mensaje: string) => void;
   onAbrirWorkflowStatusModal?: (proyectoId?: string) => void;
+  onAbrirComercializarProyecto?: (proyectoId?: string) => void;
 }
 
 export type TabComercial = 
   | 'cockpit'
   | 'pipeline'
-  | 'control_matricula';
+  | 'control_matricula'
+  | 'configuracion_redes';
 
 export const GerenciaComercializacionView: React.FC<GerenciaComercializacionViewProps> = ({
   proyectos,
@@ -94,6 +101,7 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
   onGuardarProyecto,
   onNotificar,
   onAbrirWorkflowStatusModal,
+  onAbrirComercializarProyecto: onAbrirComercializarProyectoProp,
 }) => {
   const [tabActiva, setTabActiva] = useState<TabComercial>('control_matricula');
   const [busqueda, setBusqueda] = useState('');
@@ -105,7 +113,9 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
   // Flujo Institucional: Gerencia Académica (Creación Sílabo) -> Gerencia General (Revisión Financiera) -> Gerencia Comercial.
   const proyectosOperativos = useMemo(() => {
     return proyectos.filter((p) => {
-      // Los programas retornados a Gerencia Académica para corrección financiera no se comercializan hasta subsanarse
+      // Los programas rechazados por Gerencia General o pendientes de revisión no se comercializan hasta ser aprobados
+      if (p.etapaFlujo === 'rechazado_gerencia_general' || p.rechazadoPorGerenciaGeneral) return false;
+      if (p.etapaFlujo === 'revision_gerencia_general' && !p.aprobadoPorGerenciaGeneralPrevia) return false;
       if (p.etapaFlujo === 'elaboracion_academica' && !p.aprobadoPorGerenciaGeneralPrevia) return false;
       return true;
     });
@@ -137,7 +147,36 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
   // Modal Cotizador Corporativo
   const [mostrarModalCotizadorCorporativo, setMostrarModalCotizadorCorporativo] = useState(false);
 
+  // Modal Selector de Formato de Salida Previo para Publicidad
+  const [mostrarModalSelectorFormato, setMostrarModalSelectorFormato] = useState(false);
+  const [formatoSeleccionadoParaFlyer, setFormatoSeleccionadoParaFlyer] = useState<FormatoPublicidad>('cuadrado');
+
+  // Modal Diseñador & Generador de Flyers para Redes Sociales
+  const [mostrarModalFlyerPublicidad, setMostrarModalFlyerPublicidad] = useState(false);
+  const [proyectoFlyerPublicidad, setProyectoFlyerPublicidad] = useState<ProyectoEducativo | null>(null);
+
+  // Modal de Preferencias de Redes Sociales
+  const [mostrarModalPreferencias, setMostrarModalPreferencias] = useState(false);
+
+  // Apertura del flujo de publicidad: Primero paso obligatorio de selección de formato
+  const handleAbrirFlyerPublicidad = (p?: ProyectoEducativo) => {
+    setProyectoFlyerPublicidad(p || null);
+    setMostrarModalSelectorFormato(true);
+  };
+
+  // Continuar desde el selector de formato hacia el diseñador
+  const handleContinuarAlDisenadorConFormato = (formato: FormatoPublicidad, p: ProyectoEducativo) => {
+    setFormatoSeleccionadoParaFlyer(formato);
+    setProyectoFlyerPublicidad(p);
+    setMostrarModalSelectorFormato(false);
+    setMostrarModalFlyerPublicidad(true);
+  };
+
   const handleAbrirComercializarProyecto = (id?: string) => {
+    if (onAbrirComercializarProyectoProp) {
+      onAbrirComercializarProyectoProp(id);
+      return;
+    }
     setProyectoParaComercializarId(id);
     setMostrarModalComercializar(true);
   };
@@ -431,6 +470,21 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
               <span>WhatsApp & Cotizador</span>
             </button>
 
+            <button
+              id="btn-preferencias-redes-comercial"
+              type="button"
+              onClick={() => setTabActiva('configuracion_redes')}
+              className={`flex-1 sm:flex-none px-3.5 py-2 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition-all border cursor-pointer ${
+                tabActiva === 'configuracion_redes'
+                  ? 'bg-indigo-600 text-white border-amber-300 ring-2 ring-amber-400/40'
+                  : 'bg-indigo-900/90 hover:bg-indigo-800 text-white border-indigo-400/50'
+              }`}
+              title="Configurar plantillas de hashtags, tonos de voz y llamadas a la acción (CTA) para redes sociales"
+            >
+              <Settings className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>Configuración Redes Sociales</span>
+            </button>
+
             {onAbrirWorkflowStatusModal && (
               <button
                 id="btn-workflow-status-comercial"
@@ -448,11 +502,11 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
               id="btn-comercial-comercializar-proyecto"
               type="button"
               onClick={() => handleAbrirComercializarProyecto()}
-              className="flex-1 sm:flex-none px-3.5 py-2 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm hover:shadow-emerald-500/20 transition-all hover:scale-[1.02] border border-emerald-300 cursor-pointer"
-              title="Comercializar Proyectos elaborados por Gerencia Académica (Redes Sociales, Precios, Embudo y Difusión)"
+              className="flex-1 sm:flex-none px-4 py-2 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm hover:shadow-emerald-500/20 transition-all hover:scale-[1.02] border border-emerald-300 cursor-pointer"
+              title="Comercializar Sílabo / Proyecto (Redes Sociales, Precios, Embudo y Difusión)"
             >
               <Rocket className="w-3.5 h-3.5 text-slate-950 stroke-[2.5] shrink-0" />
-              <span>Comercializar Proyecto</span>
+              <span>Comercializar Sílabo/Proyecto</span>
             </button>
           </div>
         </div>
@@ -550,11 +604,12 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
             </button>
             <button
               type="button"
-              onClick={() => handleAbrirComercializarProyecto()}
-              className="px-3 py-1.5 rounded-xl font-black border transition-all text-xs flex items-center gap-1.5 bg-gradient-to-r from-emerald-400 to-teal-300 text-slate-950 border-emerald-300 shadow-xs hover:scale-[1.02] cursor-pointer"
+              onClick={() => handleAbrirFlyerPublicidad()}
+              className="px-3 py-1.5 rounded-xl font-bold border transition-all text-xs flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border-blue-400 shadow-md shadow-indigo-900/30 cursor-pointer"
+              title="Generar flyer e imagen para redes sociales con selección de campos"
             >
-              <Rocket className="w-3.5 h-3.5" />
-              <span>Comercializar Curso</span>
+              <Megaphone className="w-3.5 h-3.5 text-amber-300" />
+              <span>🎨 Flyer Publicidad Redes</span>
             </button>
           </div>
         </div>
@@ -645,6 +700,90 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
         </div>
       )}
 
+      {/* SECCIÓN: SÍLABOS FORMALMENTE APROBADOS POR GERENCIA GENERAL PARA COMERCIALIZACIÓN */}
+      {proyectos.filter(p => p.aprobadoPorGerenciaGeneralPrevia).length > 0 && (
+        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-teal-950 border-2 border-emerald-500/50 rounded-2xl p-4 sm:p-5 shadow-lg text-white space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-emerald-800/60">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] uppercase font-black tracking-wider bg-emerald-500 text-slate-950 px-2 py-0.5 rounded shadow-xs">
+                    Flujo Institucional Aprobado
+                  </span>
+                  <h3 className="text-sm font-black text-white">
+                    Sílabos con Dictamen Aprobado por Gerencia General ({proyectos.filter(p => p.aprobadoPorGerenciaGeneralPrevia).length})
+                  </h3>
+                </div>
+                <p className="text-xs text-emerald-200/80 mt-0.5">
+                  Proyectos validados pedagógica y financieramente por Dr. Walter Rene Pedroza listos para ejecución comercial y captación de alumnos
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-mono text-emerald-300 bg-emerald-900/60 px-3 py-1.5 rounded-xl border border-emerald-700/50 shrink-0 self-start sm:self-center">
+              Revisión GG: 100% Viable
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {proyectos.filter(p => p.aprobadoPorGerenciaGeneralPrevia).map((p) => (
+              <div key={p.id} className="bg-white/5 border border-emerald-500/30 rounded-xl p-3.5 space-y-2.5 hover:border-emerald-400 transition-all">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded">
+                      {p.codigoProyecto || p.codigoPrograma || 'PRG'}
+                    </span>
+                    <h5 className="text-xs font-bold text-white mt-1 line-clamp-1">{p.nombreProyecto}</h5>
+                  </div>
+                  <span className="text-[10px] bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded-full shrink-0">
+                    Aprobado
+                  </span>
+                </div>
+
+                {/* Explicación de por qué se aprobó */}
+                <div className="bg-emerald-900/40 border border-emerald-500/40 rounded-lg p-2 text-xs space-y-1">
+                  <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wide flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    Motivo / Dictamen de Aprobación GG:
+                  </span>
+                  <p className="text-[11px] text-emerald-100 italic line-clamp-3 leading-snug">
+                    "{p.motivoAprobacionGerenciaGeneral || p.observacionesRevisionGeneral || 'Viabilidad pedagógica y financiera con ISV 15% validada formalmente.'}"
+                  </p>
+                  <div className="text-[10px] text-emerald-400 pt-0.5">
+                    Aprobó: {p.aprobadoPor || 'Dr. Walter Rene Pedroza (Gerencia General)'}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-white/10 gap-1.5">
+                  <span className="text-slate-300 text-[11px] truncate">Docente: <strong className="text-white">{p.nombreDocente}</strong></span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleAbrirFlyerPublicidad(p)}
+                      className="px-2 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-[10px] rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                      title="Generar flyer e imagen publicitaria para redes sociales"
+                    >
+                      <Megaphone className="w-3 h-3 text-amber-300" />
+                      <span>Publicidad Redes</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAbrirMatriculaRapida(p)}
+                      className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Users className="w-3 h-3" />
+                      <span>Matricular</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Selector de Pestañas: Procesos Básicos para 1 Persona */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-0">
         <button
@@ -684,6 +823,20 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
         >
           <ShoppingBag className="w-4 h-4 text-emerald-300" />
           <span>Control de Matrícula ({proyectosOperativos.length})</span>
+        </button>
+
+        <button
+          id="tab-configuracion-redes-comercial"
+          type="button"
+          onClick={() => setTabActiva('configuracion_redes')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl font-bold text-sm transition-all whitespace-nowrap cursor-pointer ${
+            tabActiva === 'configuracion_redes'
+              ? 'bg-indigo-950 text-white shadow-xs border-b-2 border-amber-400'
+              : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 border-b-0'
+          }`}
+        >
+          <Settings className="w-4 h-4 text-amber-400" />
+          <span>📢 Configuración de Redes Sociales</span>
         </button>
       </div>
 
@@ -1192,6 +1345,16 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
 
                               <button
                                 type="button"
+                                onClick={() => handleAbrirFlyerPublicidad(p)}
+                                className="px-2 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded text-[11px] font-bold flex items-center gap-1 transition-colors shadow-2xs"
+                                title="Diseñar flyer e imagen publicitaria para redes sociales"
+                              >
+                                <Megaphone className="w-3 h-3 text-amber-300" />
+                                <span className="hidden md:inline">Flyer</span>
+                              </button>
+
+                              <button
+                                type="button"
                                 onClick={() => setProyectoEditando(p)}
                                 className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded text-[11px] font-bold flex items-center gap-1 transition-colors"
                                 title="Edición rápida de metas y datos comerciales"
@@ -1220,6 +1383,25 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
             )}
           </div>
 
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* VISTA 3: PANEL DE CONFIGURACIÓN DE REDES SOCIALES & MARKETING */}
+      {/* ========================================================================= */}
+      {tabActiva === 'configuracion_redes' && (
+        <div className="animate-in fade-in duration-150">
+          <CommercialSocialPreferencesPanel
+            proyectos={proyectosOperativos}
+            moneda={moneda}
+            onGuardar={(nuevas) => {
+              onNotificar?.('Preferencias de redes sociales guardadas exitosamente. Se aplicarán automáticamente al generar imágenes de publicidad.');
+            }}
+            onNotificar={onNotificar}
+            onAbrirFlyerConProyecto={(p) => {
+              handleAbrirFlyerPublicidad(p);
+            }}
+          />
         </div>
       )}
 
@@ -1284,6 +1466,41 @@ export const GerenciaComercializacionView: React.FC<GerenciaComercializacionView
         proyectos={proyectosOperativos}
         moneda={moneda}
         onNotificar={onNotificar}
+      />
+
+      {/* Modal Selector de Formato de Salida Previo (Paso 1 antes de generar imagen) */}
+      <CommercialFormatSelectorModal
+        isOpen={mostrarModalSelectorFormato}
+        onClose={() => setMostrarModalSelectorFormato(false)}
+        proyectoInicial={proyectoFlyerPublicidad}
+        proyectos={proyectosOperativos}
+        moneda={moneda}
+        onContinuarAlDisenador={handleContinuarAlDisenadorConFormato}
+        onNotificar={onNotificar}
+      />
+
+      {/* Modal Diseñador & Generador de Flyers para Redes Sociales con Selección de Campos */}
+      <CommercialSocialMediaFlyerModal
+        isOpen={mostrarModalFlyerPublicidad}
+        onClose={() => {
+          setMostrarModalFlyerPublicidad(false);
+          setProyectoFlyerPublicidad(null);
+        }}
+        proyectoInicial={proyectoFlyerPublicidad}
+        formatoInicial={formatoSeleccionadoParaFlyer}
+        proyectos={proyectosOperativos}
+        moneda={moneda}
+        onGuardarProyecto={onGuardarProyecto}
+        onNotificar={onNotificar}
+      />
+
+      {/* Modal de Preferencias de Redes Sociales */}
+      <CommercialSocialPreferencesModal
+        isOpen={mostrarModalPreferencias}
+        onClose={() => setMostrarModalPreferencias(false)}
+        onGuardar={() => {
+          onNotificar?.('Preferencias de redes sociales guardadas exitosamente.');
+        }}
       />
 
     </div>

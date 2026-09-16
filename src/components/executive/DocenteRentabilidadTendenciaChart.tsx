@@ -39,6 +39,7 @@ import {
   formatearEtiquetaMes, 
   formatearEtiquetaCortaMes 
 } from '../../utils/monthUtils';
+import { CargaCostoDocenteBarChart } from './CargaCostoDocenteBarChart';
 
 interface DocenteRentabilidadTendenciaChartProps {
   proyectos: ProyectoEducativo[];
@@ -78,6 +79,7 @@ export const DocenteRentabilidadTendenciaChart: React.FC<DocenteRentabilidadTend
   const [metricaRentabilidad, setMetricaRentabilidad] = useState<'roi' | 'margenVenta' | 'utilidad'>('roi');
   const [tipoTarifa, setTipoTarifa] = useState<'ponderada' | 'simple'>('ponderada');
   const [mostrarReferenciaMeta, setMostrarReferenciaMeta] = useState<boolean>(true);
+  const [vistaSubModo, setVistaSubModo] = useState<'tarifa_rentabilidad' | 'carga_costo_acumulado'>('tarifa_rentabilidad');
 
   // Filtrado de proyectos
   const proyectosFiltrados = useMemo(() => {
@@ -344,8 +346,42 @@ export const DocenteRentabilidadTendenciaChart: React.FC<DocenteRentabilidadTend
 
   return (
     <div className={`space-y-4 ${embedded ? '' : 'p-1 sm:p-2'}`} id="tendencia-docente-rentabilidad-container">
-      {/* CABECERA Y CONTEXTO */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+      {/* SELECTOR DE ENFOQUE ANALÍTICO */}
+      <div className="flex items-center justify-between bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setVistaSubModo('tarifa_rentabilidad')}
+            className={`px-3 py-1.5 text-xs rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              vistaSubModo === 'tarifa_rentabilidad'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span>Tarifa vs Rentabilidad (Curva y ROI)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setVistaSubModo('carga_costo_acumulado')}
+            className={`px-3 py-1.5 text-xs rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              vistaSubModo === 'carga_costo_acumulado'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>Gráfico de Barras: Carga y Costo Acumulado</span>
+          </button>
+        </div>
+      </div>
+
+      {vistaSubModo === 'carga_costo_acumulado' ? (
+        <CargaCostoDocenteBarChart proyectos={proyectos} moneda={moneda} embedded={true} />
+      ) : (
+        <>
+          {/* CABECERA Y CONTEXTO */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center shrink-0 shadow-2xs">
             <TrendingUp className="w-5 h-5" />
@@ -914,6 +950,8 @@ export const DocenteRentabilidadTendenciaChart: React.FC<DocenteRentabilidadTend
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };

@@ -24,7 +24,8 @@ import {
   Filter,
   Layers,
   Sparkles,
-  Calendar
+  Calendar,
+  Rocket
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda } from '../../types';
 import { formatearMoneda } from '../../utils/calculations';
@@ -56,6 +57,7 @@ interface AcademicCreatedProjectsViewProps {
   onEliminarProyecto?: (p: ProyectoEducativo) => void;
   onEliminarMultiples?: (ids: string[]) => void;
   onAbrirWorkflowStatusModal?: (proyectoId?: string) => void;
+  onAbrirComercializarProyecto?: (proyectoId?: string) => void;
   onNotificar?: (mensaje: string) => void;
   onAbrirSyllabusPDF?: (p: ProyectoEducativo) => void;
 }
@@ -70,6 +72,7 @@ export const AcademicCreatedProjectsView: React.FC<AcademicCreatedProjectsViewPr
   onEliminarProyecto,
   onEliminarMultiples,
   onAbrirWorkflowStatusModal,
+  onAbrirComercializarProyecto,
   onNotificar,
   onAbrirSyllabusPDF,
 }) => {
@@ -174,6 +177,18 @@ export const AcademicCreatedProjectsView: React.FC<AcademicCreatedProjectsViewPr
       enComercializacion,
       listos,
     };
+  }, [proyectosAcademicos]);
+
+  // Proyectos que han cumplido todos los procesos institucionales
+  const proyectosListosComercializar = useMemo(() => {
+    return proyectosAcademicos.filter(
+      (p) =>
+        p.etapaFlujo === 'comercializacion' ||
+        p.aprobadoPorGerenciaGeneralPrevia ||
+        p.dictamenGerenciaGeneral === 'Aprobado' ||
+        p.seLlevoACabo === 'Listo' ||
+        p.seLlevoACabo === 'En curso'
+    );
   }, [proyectosAcademicos]);
 
   // Manejador de selección de filas
@@ -359,6 +374,36 @@ export const AcademicCreatedProjectsView: React.FC<AcademicCreatedProjectsViewPr
           <p className="text-[10px] text-slate-500 mt-0.5">Aprobación final emitida</p>
         </div>
       </div>
+
+      {/* BANNER: SÍLABOS / PROYECTOS LISTOS PARA COMERCIALIZAR */}
+      {proyectosListosComercializar.length > 0 && onAbrirComercializarProyecto && (
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
+              <Rocket className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h4 className="text-xs sm:text-sm font-black text-emerald-950 flex items-center gap-2">
+                <span>{proyectosListosComercializar.length} Sílabos / Proyectos aprobados listos para Comercializar</span>
+                <span className="px-2 py-0.5 bg-emerald-200 text-emerald-900 rounded-full text-[10px] font-black">¡Aprobados GG!</span>
+              </h4>
+              <p className="text-xs text-emerald-800 mt-0.5">
+                Procesos cumplidos: Sílabos validados y autorizados por Gerencia General. Activa pauta publicitaria, precios preventa y matrícula en 1 clic.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            id="btn-comercializar-banner-academica"
+            onClick={() => onAbrirComercializarProyecto(proyectosListosComercializar[0]?.id)}
+            className="px-4 py-2.5 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-black text-xs rounded-xl shadow-md flex items-center justify-center gap-2 hover:scale-[1.02] transition-all cursor-pointer shrink-0 border border-emerald-300"
+            title="Comercializar Sílabo / Proyecto"
+          >
+            <Rocket className="w-4 h-4 text-slate-950 stroke-[2.5]" />
+            <span>Comercializar Sílabo/Proyecto</span>
+          </button>
+        </div>
+      )}
 
       {/* 3. BARRA DE BÚSQUEDA Y FILTROS MÚLTIPLES */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs space-y-3">
@@ -705,7 +750,29 @@ export const AcademicCreatedProjectsView: React.FC<AcademicCreatedProjectsViewPr
 
                       {/* ACCIONES DE GESTIÓN (INCLUYENDO BORRAR DESTACADO) */}
                       <td className="py-3.5 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1 flex-wrap">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          {/* ACCIÓN: COMERCIALIZAR SÍLABO/PROYECTO (HABILITADO CUANDO ESTÁ APROBADO) */}
+                          {onAbrirComercializarProyecto && (() => {
+                            const esCumplido =
+                              p.etapaFlujo === 'comercializacion' ||
+                              p.aprobadoPorGerenciaGeneralPrevia ||
+                              p.dictamenGerenciaGeneral === 'Aprobado' ||
+                              p.seLlevoACabo === 'Listo' ||
+                              p.seLlevoACabo === 'En curso';
+                            return esCumplido ? (
+                              <button
+                                type="button"
+                                id={`btn-comercializar-fila-${p.id}`}
+                                onClick={() => onAbrirComercializarProyecto(p.id)}
+                                className="px-2.5 py-1 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 text-slate-950 rounded-lg text-[11px] font-black flex items-center gap-1 shadow-2xs hover:scale-[1.02] border border-emerald-300 cursor-pointer transition-all shrink-0"
+                                title="Comercializar Sílabo / Proyecto (Redes, Matrícula, Precios, Difusión)"
+                              >
+                                <Rocket className="w-3 h-3 text-slate-950 stroke-[2.5]" />
+                                <span>Comercializar</span>
+                              </button>
+                            ) : null;
+                          })()}
+
                           {/* BOTÓN BORRAR PROYECTO (SOLICITADO EXPLÍCITAMENTE) */}
                           <button
                             type="button"

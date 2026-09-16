@@ -63,6 +63,7 @@ import {
 } from '../utils/poaMonthlyTrackingUtils';
 import { formatearHNL } from '../utils/poa2026Data';
 import { formatearEtiquetaMes } from '../utils/monthUtils';
+import { PerfilGerencia } from '../utils/authPorGerencia';
 
 interface ProjectFormModalProps {
   isOpen: boolean;
@@ -72,6 +73,7 @@ interface ProjectFormModalProps {
   proyectosExistentes?: ProyectoEducativo[];
   moneda: Moneda;
   vistaActual?: string;
+  usuarioActivo?: PerfilGerencia;
 }
 
 export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
@@ -82,6 +84,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   proyectosExistentes = [],
   moneda,
   vistaActual,
+  usuarioActivo,
 }) => {
   const [formData, setFormData] = useState({
     id: '',
@@ -203,14 +206,33 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
     }
   };
 
-  // Modo de visualización según gerencia de origen (flujo de trabajo y separación de funciones)
+  // Modo de visualización según rol de usuario autenticado y gerencia
   const [modoFormulario, setModoFormulario] = useState<'academica' | 'comercial' | 'integral'>(() => {
+    if (usuarioActivo) {
+      if (usuarioActivo.id === 'gerencia-academica') return 'academica';
+      if (usuarioActivo.id === 'gerencia-comercializacion') return 'comercial';
+      if (usuarioActivo.id === 'gerencia-general') return 'integral';
+    }
     if (vistaActual === 'gerencia-academica') return 'academica';
     if (vistaActual === 'gerencia-comercializacion') return 'comercial';
     return 'integral';
   });
 
   useEffect(() => {
+    if (usuarioActivo) {
+      if (usuarioActivo.id === 'gerencia-academica') {
+        setModoFormulario('academica');
+        return;
+      }
+      if (usuarioActivo.id === 'gerencia-comercializacion') {
+        setModoFormulario('comercial');
+        return;
+      }
+      if (usuarioActivo.id === 'auditor-interno') {
+        setModoFormulario('integral');
+        return;
+      }
+    }
     if (vistaActual === 'gerencia-academica') {
       setModoFormulario('academica');
     } else if (vistaActual === 'gerencia-comercializacion') {
@@ -218,7 +240,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
     } else {
       setModoFormulario('integral');
     }
-  }, [vistaActual, isOpen]);
+  }, [vistaActual, isOpen, usuarioActivo]);
 
   const esModoAcad = modoFormulario === 'academica';
 
@@ -431,12 +453,19 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   }, [proyectoAEditar, isOpen, proyectosExistentes, silabosDisponibles]);
 
   const handleRestablecerCostosEstandar = () => {
-    setFormData({
-      ...formData,
+    setFormData(prev => ({
+      ...prev,
       costoZoom: 300,
       costoPapeleria: 100,
       gastosVarios: 100,
-    });
+      tarifaHoraDocente: Number(prev.tarifaHoraDocente) > 0 ? prev.tarifaHoraDocente : 200,
+      horasClase: Number(prev.horasClase) > 0 ? prev.horasClase : 12,
+      usarTarifaHora: true,
+    }));
+    if (campoConError === 'seccion-costos-operativos' || campoConError === 'input-costo-zoom' || campoConError === 'input-tarifa-docente') {
+      setCampoConError(null);
+      setAlertaSeguridad(null);
+    }
   };
 
   // Conversión segura de horas a número entero
@@ -476,6 +505,17 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   const impactoRebajaHNL = convertirAHNL(calculoEnVivo.ingresoRealTotal || 0, moneda);
   const saldoRestanteMesEstimado = Math.max(0, metaMesPOA - (formData.aprobacionFinalGerenciaGeneral ? impactoRebajaHNL : 0));
 
+  // Detección institucional: Costo Operativo Proyectado vs. Ingreso Total Esperado (Límite prudencial: 60%)
+  const costoOperativoProyectado = Number(calculoEnVivo.gastoTotalOperativo) || 0;
+  // Ingreso Total Esperado: Se calcula sobre el ingreso total facturado/previsto (ingresoRealTotal si hay participantes o precioVentaRequerido si se proyecta)
+  const ingresoTotalEsperado = (calculoEnVivo.ingresoRealTotal && calculoEnVivo.ingresoRealTotal > 0)
+    ? calculoEnVivo.ingresoRealTotal
+    : (calculoEnVivo.precioVentaRequerido || 0);
+  const porcentajeCostoSobreIngreso = ingresoTotalEsperado > 0
+    ? (costoOperativoProyectado / ingresoTotalEsperado) * 100
+    : 0;
+  const excedeSesentaPorcientoCostoOperativo = costoOperativoProyectado > 0 && ingresoTotalEsperado > 0 && porcentajeCostoSobreIngreso > 60;
+
   if (!isOpen) return null;
 
   // Función para llevar al usuario de forma suave y automática al campo faltante y enfocarlo
@@ -514,7 +554,11 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       horario: prev.horario && prev.horario.trim() ? prev.horario : '06:00 PM - 08:00 PM',
       diasClase: prev.diasClase && prev.diasClase.trim() ? prev.diasClase : 'Lunes, Miércoles y Viernes',
       tarifaHoraDocente: Number(prev.tarifaHoraDocente) > 0 ? prev.tarifaHoraDocente : 200,
-      alumnosProyectados: Number(prev.alumnosProyectados) >= 6 ? prev.alumnosProyectados : 6,
+      costoZoom: Number(prev.costoZoom) > 0 ? prev.costoZoom : 300,
+      costoPapeleria: Number(prev.costoPapeleria) > 0 ? prev.costoPapeleria : 100,
+      gastosVarios: Number(prev.gastosVarios) > 0 ? prev.gastosVarios : 100,
+      margenGananciaOperativa: Number(prev.margenGananciaOperativa) > 0 ? prev.margenGananciaOperativa : 40,
+      alumnosProyectados: Number(prev.alumnosProyectados) >= 6 && Number.isInteger(Number(prev.alumnosProyectados)) ? prev.alumnosProyectados : 6,
     }));
     setAlertaSeguridad(null);
     setCampoConError(null);
@@ -705,25 +749,139 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       },
       {
         idElemento: 'input-tarifa-docente',
-        nombreCampo: 'Tarifa Docente por Hora',
-        seccion: 'Costos Operativos',
-        esValido: () => Number(formData.tarifaHoraDocente) > 0,
-        mensaje: 'La tarifa docente por hora debe ser mayor a 0 para calcular el costo operativo del curso.',
-        autoRellenar: () => {
-          setFormData(prev => ({ ...prev, tarifaHoraDocente: 200 }));
+        nombreCampo: 'Honorarios Docentes',
+        seccion: 'Costos Operativos Directos',
+        esValido: () => {
+          const horas = parseInt(String(formData.horasClase || '0'), 10) || 0;
+          const tarifa = Number(formData.tarifaHoraDocente) || 0;
+          const costoManual = Number(formData.costoDocenteManual) || 0;
+          const honorarios = formData.usarTarifaHora ? horas * tarifa : (costoManual > 0 ? costoManual : horas * tarifa);
+          return honorarios > 0;
         },
-        textoAutoRellenar: 'Fijar Tarifa Estándar (200)'
+        mensaje: 'Los honorarios docentes no pueden ser cero (0.00). Todo proyecto educativo elevado a Gerencia General debe registrar una tarifa horaria y horas válidas o un costo docente asignado.',
+        autoRellenar: () => {
+          setFormData(prev => ({
+            ...prev,
+            tarifaHoraDocente: Number(prev.tarifaHoraDocente) > 0 ? prev.tarifaHoraDocente : 200,
+            horasClase: Number(prev.horasClase) > 0 ? prev.horasClase : 12,
+            usarTarifaHora: true,
+          }));
+        },
+        textoAutoRellenar: 'Asignar Tarifa Estándar (200 / 12 hrs)'
+      },
+      {
+        idElemento: 'input-costo-zoom',
+        nombreCampo: 'Costos Fijos Operativos (Zoom, Papelería, Varios)',
+        seccion: 'Costos Operativos Fijos',
+        esValido: () => {
+          const totalFijos = Number(formData.costoZoom || 0) + Number(formData.costoPapeleria || 0) + Number(formData.gastosVarios || 0);
+          return totalFijos > 0;
+        },
+        mensaje: 'Los costos fijos de soporte operativo (Zoom, papelería y gastos varios) no pueden ser cero (0.00). Se requiere sustento operativo institucional antes del dictamen de Gerencia General.',
+        autoRellenar: () => {
+          setFormData(prev => ({
+            ...prev,
+            costoZoom: 300,
+            costoPapeleria: 100,
+            gastosVarios: 100,
+          }));
+        },
+        textoAutoRellenar: 'Restablecer Costos Fijos (300 / 100 / 100)'
+      },
+      {
+        idElemento: 'seccion-costos-operativos',
+        nombreCampo: 'Gasto Total Operativo del Proyecto',
+        seccion: '2. Costos Operativos',
+        esValido: () => calculoEnVivo.gastoTotalOperativo > 0,
+        mensaje: 'El Gasto Total Operativo del proyecto no puede ser cero (0.00). La Gerencia General prohíbe dictaminar o autorizar proyectos con presupuesto operativo nulo.',
+        autoRellenar: handleRestablecerCostosEstandar,
+        textoAutoRellenar: 'Restablecer Costos Operativos Estándar'
+      },
+      {
+        idElemento: 'input-margen-ganancia',
+        nombreCampo: 'Margen de Ganancia Operativa',
+        seccion: 'Costos y Rentabilidad',
+        esValido: () => Number(formData.margenGananciaOperativa) > 0,
+        mensaje: 'El margen de ganancia operativa debe ser mayor a 0% para garantizar un precio de venta económicamente sostenible.',
+        autoRellenar: () => {
+          setFormData(prev => ({ ...prev, margenGananciaOperativa: 40 }));
+        },
+        textoAutoRellenar: 'Fijar Margen Institucional (40%)'
       },
       {
         idElemento: 'input-alumnos-proyectados',
-        nombreCampo: 'Alumnos Proyectados (Meta Mínima)',
+        nombreCampo: 'Alumnos Proyectados (Existencia Numérica)',
+        seccion: 'Costos y Rentabilidad',
+        esValido: () => {
+          const val = formData.alumnosProyectados;
+          if (val === '' || val === null || val === undefined) return false;
+          const num = Number(val);
+          return !isNaN(num) && num > 0;
+        },
+        mensaje: 'Debe ingresar una cantidad numérica válida de alumnos proyectados.',
+        autoRellenar: () => {
+          setFormData(prev => ({ ...prev, alumnosProyectados: 6 }));
+        },
+        textoAutoRellenar: 'Fijar 6 Alumnos'
+      },
+      {
+        idElemento: 'input-alumnos-proyectados',
+        nombreCampo: 'Alumnos Proyectados (Número Entero)',
+        seccion: 'Costos y Rentabilidad',
+        esValido: () => {
+          const num = Number(formData.alumnosProyectados);
+          return Number.isInteger(num) && num > 0;
+        },
+        mensaje: 'Inconsistencia en la proyección de alumnos: La meta debe ser un número entero de estudiantes (sin decimales ni fracciones).',
+        autoRellenar: () => {
+          setFormData(prev => ({
+            ...prev,
+            alumnosProyectados: Math.max(6, Math.round(Number(prev.alumnosProyectados) || 6))
+          }));
+        },
+        textoAutoRellenar: 'Redondear a Entero'
+      },
+      {
+        idElemento: 'input-alumnos-proyectados',
+        nombreCampo: 'Alumnos Proyectados (Mínimo Institucional)',
         seccion: 'Costos y Rentabilidad',
         esValido: () => Number(formData.alumnosProyectados) >= 6,
-        mensaje: 'Regla Institucional: Todos los proyectos deben arrancar con un mínimo de 6 alumnos proyectados para ser rentables.',
+        mensaje: 'Regla Institucional: La meta mínima de alumnos proyectados debe ser de al menos 6 estudiantes para ser financieramente viable antes de enviar a Gerencia General.',
         autoRellenar: () => {
           setFormData(prev => ({ ...prev, alumnosProyectados: 6 }));
         },
         textoAutoRellenar: 'Fijar Mínimo Institucional (6 Alumnos)'
+      },
+      {
+        idElemento: 'input-alumnos-proyectados',
+        nombreCampo: 'Alumnos Proyectados (Límite por Sección)',
+        seccion: 'Costos y Rentabilidad',
+        esValido: () => Number(formData.alumnosProyectados) <= 250,
+        mensaje: 'Inconsistencia en la proyección: Una meta superior a 250 alumnos para un solo grupo formativo excede la capacidad pedagógica estándar. Para grupos masivos, aperture secciones adicionales.',
+        autoRellenar: () => {
+          setFormData(prev => ({ ...prev, alumnosProyectados: 30 }));
+        },
+        textoAutoRellenar: 'Ajustar a Cupo Estándar (30 Alumnos)'
+      },
+      {
+        idElemento: 'input-alumnos-proyectados',
+        nombreCampo: 'Precio Sugerido por Alumno Resultante',
+        seccion: 'Costos y Rentabilidad',
+        esValido: () => calculoEnVivo.precioSugeridoAlumno > 0 && !isNaN(calculoEnVivo.precioSugeridoAlumno) && isFinite(calculoEnVivo.precioSugeridoAlumno),
+        mensaje: 'Inconsistencia financiera: El precio resultante sugerido por alumno es 0.00 o inconsistente debido a costos operativos nulos o proyecciones distorsionadas.',
+        autoRellenar: () => {
+          setFormData(prev => ({
+            ...prev,
+            tarifaHoraDocente: 200,
+            costoZoom: 300,
+            costoPapeleria: 100,
+            gastosVarios: 100,
+            alumnosProyectados: 6,
+            margenGananciaOperativa: 40,
+            usarTarifaHora: true,
+          }));
+        },
+        textoAutoRellenar: 'Reajustar Parámetros Financieros Base'
       }
     ];
 
@@ -916,7 +1074,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       costoPapeleria: Number(formData.costoPapeleria) || 0,
       gastosVarios: Number(formData.gastosVarios) || 0,
       margenGananciaOperativa: Number(formData.margenGananciaOperativa) || 0,
-      alumnosProyectados: Number(formData.alumnosProyectados) || 1,
+      alumnosProyectados: Math.max(6, Math.round(Number(formData.alumnosProyectados)) || 6),
       alumnosFinal: alumnosFinalCalc,
       metodoVenta: metodoFinal,
       seLlevoACabo: estadoFinal,
@@ -932,6 +1090,42 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       observacionesAprobacionGeneral: formData.observacionesAprobacionGeneral?.trim() || undefined,
       montoFacturacionAprobadaHNL: formData.aprobacionFinalGerenciaGeneral ? convertirAHNL(calculoEnVivo.ingresoRealTotal || 0, moneda) : 0,
     });
+
+    // Salvaguarda institucional de Costos Operativos:
+    // Nunca permitir guardar o enviar un proyecto con costos operativos en cero a Gerencia General
+    if (proyectoCalculado.gastoTotalOperativo <= 0) {
+      setCampoConError('seccion-costos-operativos');
+      setAlertaSeguridad({
+        idElemento: 'seccion-costos-operativos',
+        nombreCampo: 'Gasto Total Operativo del Proyecto',
+        seccion: 'Costos Operativos',
+        mensaje: 'Bloqueo Institucional: No se puede guardar ni elevar a Gerencia General un proyecto con costo operativo igual a cero (0.00). Restablezca los costos estándar.',
+        totalFaltantes: 1,
+        listaPendientes: [{ id: 'seccion-costos-operativos', nombre: 'Costos Operativos' }],
+        autoRellenar: handleRestablecerCostosEstandar,
+        textoAutoRellenar: 'Restablecer Costos Estándar',
+      });
+      llevarAlCampoFaltante('seccion-costos-operativos');
+      return;
+    }
+
+    // Salvaguarda institucional de Proyecciones de Alumnos:
+    // Nunca permitir guardar proyecciones inconsistentes (< 6 o no entero)
+    if (proyectoCalculado.alumnosProyectados < 6 || !Number.isInteger(proyectoCalculado.alumnosProyectados)) {
+      setCampoConError('input-alumnos-proyectados');
+      setAlertaSeguridad({
+        idElemento: 'input-alumnos-proyectados',
+        nombreCampo: 'Alumnos Proyectados',
+        seccion: 'Costos y Rentabilidad',
+        mensaje: 'Bloqueo Institucional: La meta de alumnos proyectados debe ser un número entero mayor o igual a 6 para garantizar viabilidad antes de remitir a Gerencia General.',
+        totalFaltantes: 1,
+        listaPendientes: [{ id: 'input-alumnos-proyectados', nombre: 'Alumnos Proyectados' }],
+        autoRellenar: () => setFormData(prev => ({ ...prev, alumnosProyectados: 6 })),
+        textoAutoRellenar: 'Fijar 6 Alumnos Mínimos',
+      });
+      llevarAlCampoFaltante('input-alumnos-proyectados');
+      return;
+    }
 
     // Si tiene aprobación final de GG y estaba planificado o en proceso, asegurar estado 'Listo'
     if (formData.aprobacionFinalGerenciaGeneral && (proyectoCalculado.seLlevoACabo === 'Planificado' || proyectoCalculado.seLlevoACabo === 'En proceso')) {
@@ -1003,7 +1197,22 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {vistaActual !== 'gerencia-academica' && vistaActual !== 'gerencia-comercializacion' && (
+            {usuarioActivo?.id === 'gerencia-academica' && (
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-900 border border-blue-300">
+                🔒 Permisos: Gerencia Académica
+              </span>
+            )}
+            {usuarioActivo?.id === 'gerencia-comercializacion' && (
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+                🔒 Permisos: Gerencia Comercial
+              </span>
+            )}
+            {usuarioActivo?.id === 'auditor-interno' && (
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                ⚖️ Auditoría SAR (Solo Lectura)
+              </span>
+            )}
+            {(!usuarioActivo || usuarioActivo.id === 'gerencia-general') && vistaActual !== 'gerencia-academica' && vistaActual !== 'gerencia-comercializacion' && (
               <div className="hidden sm:inline-flex items-center p-0.5 bg-slate-200 rounded-lg text-[10px] font-bold">
                 <button
                   type="button"
@@ -2060,7 +2269,11 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               <div 
                 id="seccion-costos-operativos"
                 className={`p-4 rounded-xl border space-y-3.5 transition-all duration-200 ${
-                  calculoEnVivo.gastoTotalOperativo > umbralCritico
+                  calculoEnVivo.gastoTotalOperativo <= 0
+                    ? 'bg-rose-50/70 border-rose-400 ring-2 ring-rose-300'
+                    : excedeSesentaPorcientoCostoOperativo
+                    ? 'bg-amber-50/90 border-2 border-amber-500 ring-2 ring-amber-400/70 shadow-md'
+                    : calculoEnVivo.gastoTotalOperativo > umbralCritico
                     ? 'bg-rose-50/40 border-rose-300 ring-2 ring-rose-200/60'
                     : 'bg-amber-50/50 border-amber-200/80'
                 }`}
@@ -2070,19 +2283,103 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                     <DollarSign className="w-3.5 h-3.5 text-amber-600" />
                     <span>2. Costos Operativos</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {excedeSesentaPorcientoCostoOperativo && (
+                      <span 
+                        id="badge-alerta-costo-60-seccion2"
+                        className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 border border-amber-600 px-2 py-0.5 rounded-md shadow-2xs animate-pulse font-mono"
+                      >
+                        <AlertTriangle className="w-3 h-3 text-slate-950" />
+                        <span>⚠️ Costo excede 60% del Ingreso ({porcentajeCostoSobreIngreso.toFixed(1)}%)</span>
+                      </span>
+                    )}
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-amber-200/90 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-md">
                       Llenado por Gerencia Académica
                     </span>
                     <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border ${
-                      calculoEnVivo.gastoTotalOperativo > umbralCritico
+                      calculoEnVivo.gastoTotalOperativo <= 0
+                        ? 'text-rose-900 bg-rose-200 border-rose-400 animate-pulse'
+                        : excedeSesentaPorcientoCostoOperativo
+                        ? 'text-amber-950 bg-amber-200 border-amber-400 font-black ring-1 ring-amber-400'
+                        : calculoEnVivo.gastoTotalOperativo > umbralCritico
                         ? 'text-rose-900 bg-rose-100 border-rose-300'
                         : 'text-amber-900 bg-amber-100 border-amber-200'
                     }`}>
-                      Total: {formatearMoneda(calculoEnVivo.gastoTotalOperativo, moneda)}
+                      {calculoEnVivo.gastoTotalOperativo <= 0
+                        ? `❌ Costo en Cero (Inválido: ${formatearMoneda(0, moneda)})`
+                        : `Total: ${formatearMoneda(calculoEnVivo.gastoTotalOperativo, moneda)}`}
                     </span>
                   </div>
                 </div>
+
+                {/* Banner de Advertencia con Color de Resaltado: Costo Operativo > 60% del Ingreso Total Esperado */}
+                {excedeSesentaPorcientoCostoOperativo && (
+                  <div 
+                    id="alerta-costo-excede-60-ingreso"
+                    className="p-3.5 bg-amber-100/95 border-2 border-amber-500 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-950 shadow-sm animate-in fade-in"
+                  >
+                    <div className="flex items-start sm:items-center gap-3">
+                      <div className="p-2.5 bg-amber-500 text-slate-950 rounded-lg shrink-0 shadow-xs">
+                        <AlertTriangle className="w-5 h-5 text-slate-950" />
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-black text-amber-950 uppercase tracking-wide">
+                            Alerta Financiera: Costo Operativo Excede el 60% del Ingreso Esperado
+                          </span>
+                          <span className="text-[10px] font-black bg-amber-600 text-white px-2 py-0.5 rounded-full shadow-2xs font-mono">
+                            {porcentajeCostoSobreIngreso.toFixed(1)}% del Ingreso
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-amber-900 font-medium mt-0.5 leading-snug">
+                          El costo operativo proyectado (<strong>{formatearMoneda(costoOperativoProyectado, moneda)}</strong>) absorbe el <strong>{porcentajeCostoSobreIngreso.toFixed(1)}%</strong> del ingreso total esperado (<strong>{formatearMoneda(ingresoTotalEsperado, moneda)}</strong>), superando el umbral prudencial del <strong>60%</strong>.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[10px] text-amber-800 font-semibold">
+                          <span className="text-amber-950 font-bold">💡 Medidas correctivas sugeridas:</span>
+                          <span className="bg-amber-200/90 text-amber-900 px-2 py-0.5 rounded border border-amber-300">
+                            Aumentar margen de ganancia en Sección 4 (recomendado ≥ 67%)
+                          </span>
+                          <span className="bg-amber-200/90 text-amber-900 px-2 py-0.5 rounded border border-amber-300">
+                            Incrementar meta de alumnos
+                          </span>
+                          <span className="bg-amber-200/90 text-amber-900 px-2 py-0.5 rounded border border-amber-300">
+                            Optimizar costos docentes/fijos
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Banner de Advertencia cuando el Costo Operativo Total es Cero */}
+                {calculoEnVivo.gastoTotalOperativo <= 0 && (
+                  <div 
+                    id="alerta-costo-cero-bloqueo"
+                    className="p-3 bg-rose-100/95 border-2 border-rose-400 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-rose-950 shadow-2xs animate-in fade-in"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-rose-200 text-rose-800 rounded-lg shrink-0">
+                        <AlertTriangle className="w-5 h-5 text-rose-600" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-black text-rose-900 block">
+                          Restricción Institucional: Costo Operativo Igual a Cero ({formatearMoneda(0, moneda)})
+                        </span>
+                        <p className="text-[11px] text-rose-800 font-medium">
+                          No es posible someter este proyecto a dictamen de la Gerencia General sin registrar costos operativos comprobables (honorarios docentes calculados y costos fijos de apertura).
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRestablecerCostosEstandar}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 transition-colors shadow-2xs cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Restablecer Costos Estándar</span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Banner de Validación en Tiempo Real con Umbral Crítico Definido */}
                 <CostoOperativoBannerPreventivo
@@ -2096,6 +2393,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                   alumnosProyectados={calculoEnVivo.alumnosProyectados}
                   tarifaHoraDocente={Number(formData.tarifaHoraDocente) || 0}
                   horasClase={horasClaseEntero}
+                  ingresoTotalEsperado={ingresoTotalEsperado}
                   onCambiarUmbral={(nuevo) => {
                     setUmbralCritico(nuevo);
                     guardarUmbralCriticoStorage(nuevo);
@@ -2456,6 +2754,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                       id="input-alumnos-proyectados"
                       type="number"
                       min="6"
+                      step="1"
                       value={formData.alumnosProyectados}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -2464,18 +2763,74 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                       onBlur={() => {
                         if (Number(formData.alumnosProyectados) < 6) {
                           setFormData({ ...formData, alumnosProyectados: 6 });
+                        } else if (!Number.isInteger(Number(formData.alumnosProyectados))) {
+                          setFormData({ ...formData, alumnosProyectados: Math.round(Number(formData.alumnosProyectados)) });
                         }
                       }}
                       className={`w-full px-3 py-1.5 text-xs bg-white border rounded-lg font-mono font-bold transition-all ${
-                        Number(formData.alumnosProyectados) < 6
+                        Number(formData.alumnosProyectados) < 6 || !Number.isInteger(Number(formData.alumnosProyectados)) || Number(formData.alumnosProyectados) > 250
                           ? 'border-rose-500 bg-rose-50/80 text-rose-900 focus:ring-2 focus:ring-rose-400'
                           : 'border-slate-300 text-slate-900 focus:ring-2 focus:ring-blue-500'
                       }`}
                     />
-                    {Number(formData.alumnosProyectados) < 6 && (
+                    
+                    {/* Alertas dinámicas de inconsistencia en proyección de alumnos */}
+                    {formData.alumnosProyectados === '' || isNaN(Number(formData.alumnosProyectados)) || Number(formData.alumnosProyectados) <= 0 ? (
+                      <div className="mt-1.5 p-1.5 bg-rose-50 border border-rose-200 rounded-md flex items-center justify-between gap-1.5 text-[11px] font-bold text-rose-700 animate-in fade-in">
+                        <div className="flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                          <span>Proyección vacía o en cero (Mínimo institucional: 6 alumnos)</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, alumnosProyectados: 6 })}
+                          className="text-[10px] bg-rose-600 hover:bg-rose-700 text-white px-2 py-0.5 rounded cursor-pointer transition-colors shrink-0"
+                        >
+                          Fijar 6
+                        </button>
+                      </div>
+                    ) : Number(formData.alumnosProyectados) < 6 ? (
+                      <div className="mt-1.5 p-1.5 bg-rose-50 border border-rose-200 rounded-md flex items-center justify-between gap-1.5 text-[11px] font-bold text-rose-700 animate-in fade-in">
+                        <div className="flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                          <span>No es viable financieramente (Mínimo requerido: 6 alumnos)</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, alumnosProyectados: 6 })}
+                          className="text-[10px] bg-rose-600 hover:bg-rose-700 text-white px-2 py-0.5 rounded cursor-pointer transition-colors shrink-0"
+                        >
+                          Fijar 6
+                        </button>
+                      </div>
+                    ) : !Number.isInteger(Number(formData.alumnosProyectados)) ? (
+                      <div className="mt-1.5 p-1.5 bg-rose-50 border border-rose-200 rounded-md flex items-center justify-between gap-1.5 text-[11px] font-bold text-rose-700 animate-in fade-in">
+                        <div className="flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                          <span>Inconsistencia: Debe ser un número entero (sin decimales)</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, alumnosProyectados: Math.round(Number(formData.alumnosProyectados)) })}
+                          className="text-[10px] bg-rose-600 hover:bg-rose-700 text-white px-2 py-0.5 rounded cursor-pointer transition-colors shrink-0"
+                        >
+                          Redondear
+                        </button>
+                      </div>
+                    ) : Number(formData.alumnosProyectados) > 250 ? (
+                      <div className="mt-1.5 p-1.5 bg-amber-50 border border-amber-200 rounded-md flex items-center gap-1.5 text-[11px] font-semibold text-amber-800 animate-in fade-in">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>Meta alta ({formData.alumnosProyectados} alumnos): Valide capacidad o aperture secciones.</span>
+                      </div>
+                    ) : calculoEnVivo.puntoEquilibrioAlumnos > Number(formData.alumnosProyectados) ? (
                       <div className="mt-1.5 p-1.5 bg-rose-50 border border-rose-200 rounded-md flex items-center gap-1.5 text-[11px] font-bold text-rose-700 animate-in fade-in">
                         <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                        <span>No es rentable (Mínimo institucional requerido: 6 alumnos)</span>
+                        <span>Inconsistencia: La proyección no alcanza el punto de equilibrio ({calculoEnVivo.puntoEquilibrioAlumnos} alumnos).</span>
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-[10px] text-emerald-700 font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span>Proyección válida y consistente con las metas institucionales.</span>
                       </div>
                     )}
                   </div>
@@ -2516,6 +2871,51 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Alerta de Resaltado: Costo Operativo > 60% del Ingreso Total Esperado */}
+                {excedeSesentaPorcientoCostoOperativo && (
+                  <div 
+                    id="alerta-resaltada-margen-costo-60"
+                    className="p-3 bg-amber-100/90 border-2 border-amber-500 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-amber-950 shadow-xs animate-in fade-in"
+                  >
+                    <div className="flex items-start sm:items-center gap-2.5">
+                      <div className="p-1.5 bg-amber-500 text-slate-950 rounded-lg shrink-0">
+                        <AlertTriangle className="w-4 h-4 text-slate-950" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-amber-950">
+                            Advertencia: Costo Operativo Absorbe el {porcentajeCostoSobreIngreso.toFixed(1)}% del Ingreso Esperado
+                          </span>
+                          <span className="text-[10px] font-black bg-amber-600 text-white px-2 py-0.5 rounded-full font-mono shadow-2xs">
+                            Excede 60%
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-amber-900 font-medium mt-0.5">
+                          Con el margen operativo actual ({formData.margenGananciaOperativa}%), los costos de operación superan el 60% prudencial de las ventas estimadas. Se sugiere elevar el margen a ≥ 70% o aumentar la meta de inscritos.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, margenGananciaOperativa: 70 })}
+                        className="px-2.5 py-1 text-[11px] font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 border border-amber-500 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                        title="Fijar margen de ganancia en 70%"
+                      >
+                        Fijar 70%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, margenGananciaOperativa: 80 })}
+                        className="px-2.5 py-1 text-[11px] font-bold text-white bg-amber-700 hover:bg-amber-800 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                        title="Fijar margen de ganancia en 80%"
+                      >
+                        Fijar 80%
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Sección 4: Método de Venta, Estado & Observaciones */}
@@ -2869,29 +3269,81 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 </div>
 
                 {/* 1. Gasto Operativo */}
-                <div className={`flex items-center justify-between text-xs py-1.5 px-2 rounded-lg border ${
-                  calculoEnVivo.gastoTotalOperativo > umbralCritico
+                <div className={`flex items-center justify-between text-xs py-1.5 px-2 rounded-lg border transition-colors ${
+                  calculoEnVivo.gastoTotalOperativo <= 0
+                    ? 'bg-rose-950/90 border-rose-500 text-rose-200 ring-1 ring-rose-500/50'
+                    : excedeSesentaPorcientoCostoOperativo
+                    ? 'bg-amber-950/90 border-2 border-amber-500 text-amber-100 ring-1 ring-amber-400/80 shadow-xs'
+                    : calculoEnVivo.gastoTotalOperativo > umbralCritico
                     ? 'bg-rose-950/80 border-rose-700/80 text-rose-200'
                     : 'border-b border-slate-800/80'
                 }`}>
                   <div className="flex items-center gap-1.5">
-                    <span className={calculoEnVivo.gastoTotalOperativo > umbralCritico ? 'text-rose-200 font-bold' : 'text-slate-400'}>
+                    <span className={
+                      calculoEnVivo.gastoTotalOperativo <= 0 
+                        ? 'text-rose-300 font-bold' 
+                        : excedeSesentaPorcientoCostoOperativo
+                        ? 'text-amber-200 font-bold'
+                        : calculoEnVivo.gastoTotalOperativo > umbralCritico 
+                        ? 'text-rose-200 font-bold' 
+                        : 'text-slate-400'
+                    }>
                       Gasto Total Operativo:
                     </span>
-                    {calculoEnVivo.gastoTotalOperativo > umbralCritico && (
+                    {calculoEnVivo.gastoTotalOperativo <= 0 ? (
+                      <span className="text-[9px] font-black uppercase tracking-wider bg-rose-900 text-rose-200 px-1.5 py-0.2 rounded border border-rose-500 animate-pulse">
+                        Inválido (0.00)
+                      </span>
+                    ) : excedeSesentaPorcientoCostoOperativo ? (
+                      <span 
+                        id="tag-resaltado-costo-60-vivo"
+                        className="text-[9px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded border border-amber-400 animate-pulse font-mono shadow-2xs"
+                        title={`Costo operativo representa el ${porcentajeCostoSobreIngreso.toFixed(1)}% del ingreso total esperado (> 60%)`}
+                      >
+                        &gt; 60% Ingreso ({porcentajeCostoSobreIngreso.toFixed(1)}%)
+                      </span>
+                    ) : calculoEnVivo.gastoTotalOperativo > umbralCritico && (
                       <span className="text-[9px] font-black uppercase tracking-wider bg-rose-900/90 text-rose-200 px-1.5 py-0.2 rounded border border-rose-600">
                         &gt; Umbral
                       </span>
                     )}
                   </div>
                   <span className={`font-mono font-bold ${
-                    calculoEnVivo.gastoTotalOperativo > umbralCritico
+                    calculoEnVivo.gastoTotalOperativo <= 0
+                      ? 'text-rose-400 font-black text-xs'
+                      : excedeSesentaPorcientoCostoOperativo
+                      ? 'text-amber-300 font-black text-sm'
+                      : calculoEnVivo.gastoTotalOperativo > umbralCritico
                       ? 'text-rose-300 font-black text-sm'
                       : 'text-amber-400'
                   }`}>
-                    {formatearMoneda(calculoEnVivo.gastoTotalOperativo, moneda)}
+                    {calculoEnVivo.gastoTotalOperativo <= 0 ? 'L 0.00 (Inválido)' : formatearMoneda(calculoEnVivo.gastoTotalOperativo, moneda)}
                   </span>
                 </div>
+
+                {/* Indicador de Proporción Costo Operativo vs. Ingreso Total Esperado */}
+                {ingresoTotalEsperado > 0 && (
+                  <div className={`flex items-center justify-between text-xs py-1 px-2 rounded-md border ${
+                    excedeSesentaPorcientoCostoOperativo
+                      ? 'bg-amber-900/40 border-amber-600/70 text-amber-200'
+                      : 'border-b border-slate-800/60 text-slate-400'
+                  }`}>
+                    <span className="flex items-center gap-1">
+                      {excedeSesentaPorcientoCostoOperativo && (
+                        <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                      )}
+                      <span>Costo / Ingreso Esperado:</span>
+                    </span>
+                    <span className={`font-mono font-bold ${
+                      excedeSesentaPorcientoCostoOperativo ? 'text-amber-300 font-black' : 'text-slate-300'
+                    }`}>
+                      {porcentajeCostoSobreIngreso.toFixed(1)}% 
+                      <span className="text-[10px] ml-1 font-normal text-slate-400">
+                        {excedeSesentaPorcientoCostoOperativo ? '(Máx rec. 60%)' : '(≤ 60% OK)'}
+                      </span>
+                    </span>
+                  </div>
+                )}
 
                 {/* 2. Precio Venta Requerido */}
                 <div className="flex items-center justify-between text-xs py-1 border-b border-slate-800/80">
@@ -3066,7 +3518,30 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+              {/* Indicador de Bloqueo Institucional si Costos son Cero o Proyecciones Inconsistentes */}
+              {(calculoEnVivo.gastoTotalOperativo <= 0 ||
+                calculoEnVivo.costoDocenteCalculado <= 0 ||
+                formData.alumnosProyectados === '' ||
+                Number(formData.alumnosProyectados) < 6 ||
+                !Number.isInteger(Number(formData.alumnosProyectados)) ||
+                Number(formData.alumnosProyectados) > 250) && (
+                <div className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 border border-rose-300 rounded-lg text-rose-800 text-[11px] font-bold">
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span>
+                    {calculoEnVivo.gastoTotalOperativo <= 0
+                      ? 'Costo operativo en 0.00'
+                      : calculoEnVivo.costoDocenteCalculado <= 0
+                      ? 'Honorarios docentes en 0.00'
+                      : formData.alumnosProyectados === '' || Number(formData.alumnosProyectados) < 6
+                      ? 'Proyección < 6 alumnos'
+                      : !Number.isInteger(Number(formData.alumnosProyectados))
+                      ? 'Alumnos deben ser enteros'
+                      : 'Proyección excede límite'}
+                  </span>
+                </div>
+              )}
+
               <button
                 id="btn-cancelar-modal"
                 type="button"
@@ -3075,13 +3550,43 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               >
                 Cancelar
               </button>
+
               <button
                 id="btn-guardar-proyecto"
                 type="submit"
-                disabled={Number(formData.alumnosProyectados) < 6}
-                title={Number(formData.alumnosProyectados) < 6 ? 'No es rentable: Se requieren mínimo 6 alumnos' : undefined}
+                disabled={
+                  usuarioActivo?.id === 'auditor-interno' ||
+                  calculoEnVivo.gastoTotalOperativo <= 0 ||
+                  calculoEnVivo.costoDocenteCalculado <= 0 ||
+                  formData.alumnosProyectados === '' ||
+                  Number(formData.alumnosProyectados) < 6 ||
+                  !Number.isInteger(Number(formData.alumnosProyectados)) ||
+                  Number(formData.alumnosProyectados) > 250
+                }
+                title={
+                  usuarioActivo?.id === 'auditor-interno'
+                    ? 'Auditoría SAR: Perfil de solo lectura. No autorizado para modificar o crear proyectos.'
+                    : calculoEnVivo.gastoTotalOperativo <= 0
+                    ? 'Bloqueo: El costo operativo total no puede ser cero (0.00)'
+                    : calculoEnVivo.costoDocenteCalculado <= 0
+                    ? 'Bloqueo: Los honorarios docentes no pueden ser cero (0.00)'
+                    : formData.alumnosProyectados === '' || Number(formData.alumnosProyectados) < 6
+                    ? 'No es rentable: Se requieren mínimo 6 alumnos proyectados'
+                    : !Number.isInteger(Number(formData.alumnosProyectados))
+                    ? 'Inconsistencia: La cantidad de alumnos debe ser un número entero'
+                    : Number(formData.alumnosProyectados) > 250
+                    ? 'Proyección excesiva (> 250): Considere aperturar secciones adicionales'
+                    : undefined
+                }
                 className={`flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white rounded-lg shadow-sm transition-colors ${
-                  Number(formData.alumnosProyectados) < 6
+                  usuarioActivo?.id === 'auditor-interno'
+                    ? 'bg-slate-400 cursor-not-allowed opacity-60'
+                    : calculoEnVivo.gastoTotalOperativo <= 0 ||
+                  calculoEnVivo.costoDocenteCalculado <= 0 ||
+                  formData.alumnosProyectados === '' ||
+                  Number(formData.alumnosProyectados) < 6 ||
+                  !Number.isInteger(Number(formData.alumnosProyectados)) ||
+                  Number(formData.alumnosProyectados) > 250
                     ? 'bg-slate-400 cursor-not-allowed opacity-60'
                     : calculoEnVivo.gastoTotalOperativo > umbralCritico
                     ? 'bg-amber-600 hover:bg-amber-700 cursor-pointer'
@@ -3090,15 +3595,26 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               >
                 <Save className="w-4 h-4" />
                 <span>
-                  {modoFormulario === 'academica'
+                  {usuarioActivo?.id === 'auditor-interno'
+                    ? 'Solo Lectura (Auditoría)'
+                    : modoFormulario === 'academica'
                     ? (proyectoAEditar ? 'Guardar y Reenviar a Comercialización' : 'Guardar y Autorizar Envío a Comercialización')
                     : modoFormulario === 'comercial'
                     ? 'Guardar y Autorizar Envío a Gerencia General'
                     : (proyectoAEditar ? 'Guardar Cambios' : 'Registrar Proyecto')}
                 </span>
-                {calculoEnVivo.gastoTotalOperativo > umbralCritico && (
+                {calculoEnVivo.gastoTotalOperativo > umbralCritico && calculoEnVivo.gastoTotalOperativo > 0 && (
                   <span className="text-[10px] bg-amber-800/90 text-amber-100 px-1.5 py-0.2 rounded font-bold">
                     ⚠️ Costo Crítico
+                  </span>
+                )}
+                {excedeSesentaPorcientoCostoOperativo && (
+                  <span 
+                    id="tag-btn-costo-60"
+                    className="text-[10px] bg-amber-400 text-slate-950 px-1.5 py-0.5 rounded font-black border border-amber-300 shadow-2xs font-mono"
+                    title={`Costo Operativo (${porcentajeCostoSobreIngreso.toFixed(1)}%) supera el 60% del ingreso esperado`}
+                  >
+                    ⚠️ Costo &gt; 60%
                   </span>
                 )}
               </button>

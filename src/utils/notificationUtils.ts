@@ -415,6 +415,105 @@ Emitido por: Dr. Walter Pedroza - Dirección de Gerencia General
     estadoEnvio: 'Entregado',
   };
 
+  guardarNotificacionEnStorage(notificacion);
+
+  return { notificacion, aviso };
+}
+
+/**
+ * Crea una notificación cuando Gerencia Académica corrige un proyecto/sílabo
+ * que había sido rechazado por Gerencia General, y lo reenvía para nueva revisión y aprobación.
+ */
+export function crearNotificacionSilaboCorregidoReenviadoGG(
+  proyecto: ProyectoEducativo,
+  detalleCorreccion?: string
+): {
+  notificacion: NotificacionGerencia;
+  aviso: AvisoProyectoItem;
+} {
+  const codEmpresa = proyecto.codigoProyecto || proyecto.codigoPrograma || 'SIG-ACAD-2026-001';
+  const codSAR = proyecto.correlativoSAR || '000-001-01-00000001';
+  const fechaHora = `${new Date().toLocaleDateString('es-HN')} ${new Date().toLocaleTimeString('es-HN')}`;
+  
+  const correosDestinatarios = [
+    CREDENCIALES_GERENCIAS.administracion.correo, // administracion.summitg@gmail.com (Gerencia General)
+    CREDENCIALES_GERENCIAS.academica.correo,      // academia.summitg@gmail.com (Gerencia Académica)
+  ];
+
+  const asuntoEmail = `[SÍLABO CORREGIDO - REENVIADO A GG] ${codEmpresa} - ${proyecto.nombreProyecto}`;
+  
+  const cuerpoEmail = `
+================================================================================
+SUMMIT IMPULSA GLOBAL, S.A. DE C.V.
+NOTIFICACIÓN OFICIAL - SÍLABO CORREGIDO REENVIADO PARA REVISIÓN Y APROBACIÓN
+================================================================================
+
+Estimada Gerencia General (Dr. Walter Pedroza):
+
+Gerencia Académica (Phd. Donal Reyes) ha realizado las correcciones requeridas al
+Sílabo Oficial / Proyecto "${proyecto.nombreProyecto}" (${codEmpresa} / SAR: ${codSAR}).
+
+ESTADO: CORREGIDO Y REENVIADO PARA REVISIÓN Y APROBACIÓN
+--------------------------------------------------------------------------------
+Observación subsanada:
+${detalleCorreccion || 'Se ajustaron costos, tarifas docentes y estructura académica conforme a las observaciones de Gerencia General.'}
+
+DATOS DEL PROYECTO ACTUALIZADO:
+- Código Empresa: ${codEmpresa}
+- Correlativo SAR: ${codSAR}
+- Docente: ${proyecto.nombreDocente}
+- Horas Totales: ${proyecto.horasClase} hrs
+- Precio Sugerido por Alumno (con ISV): ${proyecto.precioFinalAlumnoConISV || proyecto.precioSugeridoVentaNeto || 0} HNL
+
+El expediente está listo en Gerencia General para su revisión de la ficha completa y dictamen de aprobación para pase a Comercialización.
+
+Fecha y Hora: ${fechaHora}
+Emitido por: Phd. Donal Reyes - Dirección de Gerencia Académica
+================================================================================
+`.trim();
+
+  const notificacion: NotificacionGerencia = {
+    id: `notif-corregido-gg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+    fecha: new Date().toISOString(),
+    gerenciaOrigen: 'gerencia-academica',
+    gerenciaDestino: 'gerencia-general',
+    tipo: 'silabo_creado_revision_gg',
+    titulo: `Sílabo Corregido Reenviado: ${codEmpresa} - ${proyecto.nombreProyecto}`,
+    mensaje: `Gerencia Académica ha subsanado las observaciones de Gerencia General en el proyecto "${proyecto.nombreProyecto}". Remitido nuevamente para revisión y aprobación final.`,
+    proyectoId: proyecto.id,
+    nombreProyecto: proyecto.nombreProyecto,
+    leida: false,
+    destinatariosEmails: correosDestinatarios,
+    asuntoEmail,
+    cuerpoEmail,
+    codigoEmpresa: codEmpresa,
+    codigoSAR: codSAR,
+    correlativoSAR: codSAR,
+    estadoEnvioEmail: 'enviado',
+    fechaEnvioEmail: fechaHora,
+    accion: {
+      etiqueta: 'Revisar en Gerencia General →',
+      vistaDestino: 'gerencia-general',
+      proyectoId: proyecto.id,
+    },
+  };
+
+  const aviso: AvisoProyectoItem = {
+    id: `aviso-corregido-gg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+    fechaHora,
+    origen: 'Gerencia Académica',
+    destino: 'Gerencia General',
+    etapa: 'revision_gerencia_general',
+    titulo: `Sílabo Corregido y Reenviado a GG (${codEmpresa})`,
+    descripcion: `Gerencia Académica aplicó las correcciones solicitadas por GG y remitió el proyecto nuevamente a Gerencia General para su revisión y aprobación.`,
+    codigoEmpresa: codEmpresa,
+    codigoSAR: codSAR,
+    correosNotificados: correosDestinatarios,
+    estadoEnvio: 'Enviado',
+  };
+
+  guardarNotificacionEnStorage(notificacion);
+
   return { notificacion, aviso };
 }
 

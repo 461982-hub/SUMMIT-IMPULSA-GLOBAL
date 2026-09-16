@@ -49,6 +49,7 @@ import {
   ArrowRight,
   X,
   Bell,
+  Rocket,
 } from 'lucide-react';
 import { ProyectoEducativo, Moneda, TipoProyecto, NivelProyecto, EstadoProyecto, TipoServicioFiscal } from '../types';
 import { formatearMoneda, calcularMetricasProyecto } from '../utils/calculations';
@@ -84,6 +85,9 @@ import { AcademicQuickBatchActionsBar } from './academic/AcademicQuickBatchActio
 import { evaluarMadurezCurricular } from '../utils/curricularMadurezUtils';
 import { SmartProjectSearchBar, coincideBusquedaInteligente, CriterioBusqueda } from './SmartProjectSearchBar';
 import { AcademicCreatedProjectsView, esProyectoCreadoPorAcademica } from './academic/AcademicCreatedProjectsView';
+import { RejectedProjectsAcademicView } from './academic/RejectedProjectsAcademicView';
+import { AcademicUrgentRejectionBanner } from './academic/AcademicUrgentRejectionBanner';
+import { RejectionEmailAlertModal } from './academic/RejectionEmailAlertModal';
 import { obtenerTodosLosSilabos, eliminarSilaboDeStorage } from '../utils/silaboCatalogUtils';
 import { obtenerBancoDocentes } from '../utils/docenteDirectoryUtils';
 import { ProjectNoticesWorkflowSection } from './workflow/ProjectNoticesWorkflowSection';
@@ -98,6 +102,7 @@ interface GerenciaAcademicaViewProps {
   onEliminarProyecto?: (p: ProyectoEducativo) => void;
   onEliminarMultiples?: (ids: string[]) => void;
   onAbrirWorkflowStatusModal?: (proyectoId?: string) => void;
+  onAbrirComercializarProyecto?: (proyectoId?: string) => void;
   onNotificar?: (mensaje: string) => void;
   subPestanaInicial?: SubPestanaAcademica;
   onCambiarSubPestana?: (pestana: SubPestanaAcademica) => void;
@@ -106,6 +111,7 @@ interface GerenciaAcademicaViewProps {
 export type SubPestanaAcademica = 
   | 'avisos_proyectos'
   | 'proyectos_creados'
+  | 'rechazados_gg'
   | 'tablero_calidad'
   | 'catalogo' 
   | 'mapa_calor_riesgo'
@@ -140,6 +146,7 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
   onEliminarProyecto,
   onEliminarMultiples,
   onAbrirWorkflowStatusModal,
+  onAbrirComercializarProyecto,
   onNotificar,
   subPestanaInicial,
   onCambiarSubPestana,
@@ -206,6 +213,16 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
       setProgramaSyllabusSeleccionado(null);
     }
   }, [silabosCreados, proyectos]);
+
+  // Proyectos rechazados por Gerencia General que requieren corrección
+  const proyectosRechazadosGG = useMemo(() => {
+    return proyectos.filter(
+      (p) => p.etapaFlujo === 'rechazado_gerencia_general' || p.rechazadoPorGerenciaGeneral === true
+    );
+  }, [proyectos]);
+
+  // Modal para inspeccionar/reenviar alerta de correo oficial de rechazo
+  const [proyectoAlertaEmailModal, setProyectoAlertaEmailModal] = useState<ProyectoEducativo | null>(null);
 
   // Estado para confirmación de eliminación de sílabo
   const [silaboABorrar, setSilaboABorrar] = useState<any | null>(null);
@@ -592,6 +609,25 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
         </div>
       </div>
 
+      {/* ALERTA PROACTIVA URGENTE: Sílabos devueltos por Gerencia General para corrección inmediata */}
+      {proyectosRechazadosGG.length > 0 && (
+        <AcademicUrgentRejectionBanner
+          proyectosRechazados={proyectosRechazadosGG}
+          moneda={moneda}
+          onCorregirProyecto={(p) => {
+            setProyectoSyllabusModal(p);
+            setSyllabusModoInicial('editar');
+            setSyllabusModalAbierto(true);
+          }}
+          onVerEmailAlerta={(p) => {
+            setProyectoAlertaEmailModal(p);
+          }}
+          onIrABandejaRechazados={() => {
+            setSubPestana('rechazados_gg');
+          }}
+        />
+      )}
+
       {/* Banner de Monitoreo de Metas POA SEP - DIC 2026 */}
       <AcademicPOAAlertBanner
         totalProyectos={proyectos.length}
@@ -676,6 +712,29 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
           <span>📁 Proyectos Creados por Académica</span>
           <span className="ml-0.5 px-1.5 py-0.2 bg-white/20 text-white rounded text-[10px] font-mono font-black">
             {totalProyectosCreadosAcademica}
+          </span>
+        </button>
+
+        {/* SUBPESTAÑA: RECHAZADOS POR GERENCIA GENERAL (CON RAZÓN Y OPCIÓN DE CORREGIR) */}
+        <button
+          id="btn-subpestana-rechazados-gg"
+          type="button"
+          onClick={() => setSubPestana('rechazados_gg')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-bold transition-all cursor-pointer ${
+            subPestana === 'rechazados_gg'
+              ? 'bg-rose-700 text-white shadow-md border border-rose-600 ring-2 ring-rose-400 font-black'
+              : proyectosRechazadosGG.length > 0
+              ? 'text-rose-950 bg-rose-100 hover:bg-rose-200 border border-rose-300 animate-pulse'
+              : 'text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-200'
+          }`}
+          title="Ver proyectos y sílabos rechazados por Gerencia General con la razón y opción de corregir"
+        >
+          <XCircle className="w-4 h-4 text-rose-500" />
+          <span>❌ Rechazados por GG</span>
+          <span className={`ml-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-black ${
+            proyectosRechazadosGG.length > 0 ? 'bg-rose-600 text-white' : 'bg-rose-200 text-rose-800'
+          }`}>
+            {proyectosRechazadosGG.length}
           </span>
         </button>
 
@@ -915,10 +974,33 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
           }}
           onEliminarMultiples={onEliminarMultiples}
           onAbrirWorkflowStatusModal={onAbrirWorkflowStatusModal}
+          onAbrirComercializarProyecto={onAbrirComercializarProyecto}
           onNotificar={onNotificar}
           onAbrirSyllabusPDF={(p) => {
             setProyectoSyllabusModal(p);
             setSyllabusModalAbierto(true);
+          }}
+        />
+      )}
+
+      {/* VISTA: PROYECTOS / SÍLABOS RECHAZADOS POR GERENCIA GENERAL (CON RAZÓN Y BOTÓN CORREGIR) */}
+      {subPestana === 'rechazados_gg' && (
+        <RejectedProjectsAcademicView
+          proyectos={proyectos}
+          moneda={moneda}
+          onCorregirProyecto={(p) => {
+            setProyectoSyllabusModal(p);
+            setSyllabusModoInicial('editar');
+            setSyllabusModalAbierto(true);
+          }}
+          onVerFicha={(p) => {
+            setProyectoSyllabusModal(p);
+            setSyllabusModoInicial('vista');
+            setSyllabusModalAbierto(true);
+          }}
+          onEliminarProyecto={onEliminarProyecto}
+          onVerAlertaEmail={(p) => {
+            setProyectoAlertaEmailModal(p);
           }}
         />
       )}
@@ -1320,7 +1402,31 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
 
                           {/* Acciones */}
                           <td className="py-3 px-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {/* Botón Comercializar Proyecto (Activado al cumplirse procesos) */}
+                              {onAbrirComercializarProyecto && (
+                                (() => {
+                                  const esCumplido =
+                                    p.etapaFlujo === 'comercializacion' ||
+                                    p.aprobadoPorGerenciaGeneralPrevia ||
+                                    p.dictamenGerenciaGeneral === 'Aprobado' ||
+                                    p.seLlevoACabo === 'Listo' ||
+                                    p.seLlevoACabo === 'En curso';
+                                  return esCumplido ? (
+                                    <button
+                                      type="button"
+                                      id={`btn-comercializar-catalogo-${p.id}`}
+                                      onClick={() => onAbrirComercializarProyecto(p.id)}
+                                      className="px-2 py-1 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 text-slate-950 rounded text-[11px] font-black flex items-center gap-1 transition-all border border-emerald-300 shadow-2xs hover:scale-105 cursor-pointer shrink-0"
+                                      title="Comercializar Sílabo / Proyecto (Redes, Matrícula, Precios, Difusión)"
+                                    >
+                                      <Rocket className="w-3 h-3 text-slate-950 stroke-[2.5]" />
+                                      <span>Comercializar</span>
+                                    </button>
+                                  ) : null;
+                                })()
+                              )}
+
                               {/* Botón Borrar Proyecto (Solicitado explícitamente) */}
                               {onEliminarProyecto && (
                                 <button
@@ -2943,6 +3049,22 @@ export const GerenciaAcademicaView: React.FC<GerenciaAcademicaViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Inspección y Envío de Alerta por Correo de Sílabo Rechazado */}
+      {proyectoAlertaEmailModal && (
+        <RejectionEmailAlertModal
+          isOpen={Boolean(proyectoAlertaEmailModal)}
+          onClose={() => setProyectoAlertaEmailModal(null)}
+          proyecto={proyectoAlertaEmailModal}
+          moneda={moneda}
+          onIniciarCorreccion={(p) => {
+            setProyectoAlertaEmailModal(null);
+            setProyectoSyllabusModal(p);
+            setSyllabusModoInicial('editar');
+            setSyllabusModalAbierto(true);
+          }}
+        />
       )}
 
     </div>

@@ -117,3 +117,33 @@ export function formatearFechaCorta(fechaStr?: string): string {
   }
   return fechaStr;
 }
+
+/**
+ * Normaliza cualquier formato de fecha o timestamp ISO a YYYY-MM-DD
+ */
+export function normalizarFechaYYYYMMDD(fechaStr?: string): string {
+  if (!fechaStr) return new Date().toISOString().slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) return fechaStr;
+  if (fechaStr.includes('T')) {
+    return fechaStr.split('T')[0];
+  }
+  // Formato DD/MM/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(fechaStr)) {
+    const partes = fechaStr.split(' ')[0].split('/');
+    if (partes.length === 3) {
+      const d = partes[0].padStart(2, '0');
+      const m = partes[1].padStart(2, '0');
+      const y = partes[2];
+      return `${y}-${m}-${d}`;
+    }
+  }
+  try {
+    const d = new Date(fechaStr);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+  } catch (e) {
+    // fallback
+  }
+  return new Date().toISOString().slice(0, 10);
+}

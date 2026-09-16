@@ -25,6 +25,7 @@ import {
 import { ProyectoEducativo, Moneda } from '../../types';
 import { MargenComparativaCharts } from './MargenComparativaCharts';
 import { DocenteRentabilidadTendenciaChart } from './DocenteRentabilidadTendenciaChart';
+import { CargaCostoDocenteBarChart } from './CargaCostoDocenteBarChart';
 import { ProjectsSideBySideComparison } from './ProjectsSideBySideComparison';
 import { MonthlyFiscalOptimizerTool } from './MonthlyFiscalOptimizerTool';
 import { GrowthProjectionTool } from './GrowthProjectionTool';
@@ -47,7 +48,7 @@ interface ReportsCenterModalProps {
   onClose: () => void;
   proyectos: ProyectoEducativo[];
   moneda: Moneda;
-  gerenciaInicial?: 'Gerencia General' | 'Gerencia Académica' | 'Gerencia de Comercialización' | 'Auditoría Interna' | 'Historial' | 'Visualizador Margenes' | 'Tendencia Docente' | 'Comparador Proyectos' | 'Optimizador Fiscal' | 'Proyección de Crecimiento';
+  gerenciaInicial?: 'Gerencia General' | 'Gerencia Académica' | 'Gerencia de Comercialización' | 'Auditoría Interna' | 'Historial' | 'Visualizador Margenes' | 'Tendencia Docente' | 'Carga Docente' | 'Comparador Proyectos' | 'Optimizador Fiscal' | 'Proyección de Crecimiento' | string;
   isDriveConnected: boolean;
   onConectarDrive?: () => Promise<void>;
   onNotificar?: (mensaje: string) => void;
@@ -133,6 +134,7 @@ export const ReportsCenterModal: React.FC<ReportsCenterModalProps> = ({
   };
 
   const pestañas = [
+    { id: 'Carga Docente', label: 'Carga y Costo Docente', icono: GraduationCap, count: 'Barras' },
     { id: 'Proyección de Crecimiento', label: 'Proyección de Crecimiento', icono: TrendingUp, count: 'Simulador' },
     { id: 'Optimizador Fiscal', label: 'Optimización Fiscal SAR', icono: Receipt, count: 'Sugerencias' },
     { id: 'Comparador Proyectos', label: 'Comparar Programas (Lado a Lado)', icono: Scale, count: 'Tabla Resumen' },
@@ -316,7 +318,10 @@ export const ReportsCenterModal: React.FC<ReportsCenterModalProps> = ({
 
         {/* Contenedor del Catálogo de Reportes */}
         <div className="p-5 flex-1 overflow-y-auto bg-slate-50/50 space-y-4">
-          {tabActiva === 'Proyección de Crecimiento' ? (
+          {tabActiva === 'Carga Docente' ? (
+            /* Gráfico de Barras Interactivo de Carga de Trabajo y Costo Docente Histórico Acumulado por Mes */
+            <CargaCostoDocenteBarChart proyectos={proyectos} moneda={moneda} />
+          ) : tabActiva === 'Proyección de Crecimiento' ? (
             /* Herramienta de Proyección de Crecimiento y Simulación Financiera Semestral */
             <GrowthProjectionTool
               proyectos={proyectos}

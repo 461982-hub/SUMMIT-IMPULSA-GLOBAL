@@ -1,6 +1,6 @@
 {
-  "name": "Matriz de Rentabilidad de Proyectos Educativos",
-  "description": "Sistema Integral de Rentabilidad y Gobernanza Multi-Gerencia de SUMMIT IMPULSA GLOBAL. Transformando talento en resultados globales.",
+  "name": "SUMMIT IMPULSA GLOBAL - Matriz de Rentabilidad & Gobernanza Multi-Gerencia",
+  "description": "Sistema Integral de Rentabilidad, Control Educativo y Gobernanza Multi-Gerencial de SUMMIT IMPULSA GLOBAL. Transformando talento en resultados globales.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

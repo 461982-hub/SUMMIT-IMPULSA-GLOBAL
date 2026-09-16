@@ -30,11 +30,25 @@ import {
   Radio,
   Zap,
   CheckCheck,
+  Settings,
+  Hash,
 } from 'lucide-react';
-import { ProyectoEducativo, Moneda, MetodoVenta, EstadoProyecto } from '../../types';
+import { ProyectoEducativo, Moneda, MetodoVenta, EstadoProyecto, PreferenciasRedesSocialesComercial } from '../../types';
 import { formatearMoneda, calcularMetricasProyecto } from '../../utils/calculations';
 import { SummitLogo } from '../SummitLogo';
 import { ControlDecisionComercialSection } from './ControlDecisionComercialSection';
+import { CommercialSlaWidget } from './CommercialSlaWidget';
+import { 
+  habilitarInicioCursoPorComercializacion, 
+  calcularSlaComercial 
+} from '../../utils/commercialSlaUtils';
+import { CommercialSocialMediaFlyerModal } from './CommercialSocialMediaFlyerModal';
+import { 
+  obtenerPreferenciasRedesSociales, 
+  generarCopyPublicitarioConPreferencias,
+  DESCRIPCIONES_TONOS 
+} from '../../utils/socialPreferencesUtils';
+import { CommercialSocialPreferencesModal } from './CommercialSocialPreferencesModal';
 
 interface CommercialProjectLauncherModalProps {
   proyectos: ProyectoEducativo[];
@@ -48,7 +62,7 @@ interface CommercialProjectLauncherModalProps {
   onAbrirWorkflowStatusModal?: (proyectoId?: string) => void;
 }
 
-type SubTabLanzador = 'proceso_venta' | 'comercializacion' | 'redes_sociales' | 'difusion_directa' | 'simulador_opciones';
+type SubTabLanzador = 'matricula_alumnos' | 'proceso_venta' | 'comercializacion' | 'redes_sociales' | 'difusion_directa' | 'simulador_opciones';
 type VistaModal = 'catalogo_resumen' | 'detalle_proyecto';
 
 export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherModalProps> = ({
@@ -88,6 +102,9 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
 
   const [subTabActiva, setSubTabActiva] = useState<SubTabLanzador>('proceso_venta');
   const [copiadoTexto, setCopiadoTexto] = useState<string | null>(null);
+  const [mostrarModalFlyer, setMostrarModalFlyer] = useState(false);
+  const [mostrarModalPreferencias, setMostrarModalPreferencias] = useState(false);
+  const [preferenciasRedes, setPreferenciasRedes] = useState<PreferenciasRedesSocialesComercial>(obtenerPreferenciasRedesSociales);
 
   // Proyecto activo en vista
   const proyectoActivo = useMemo(() => {
@@ -154,7 +171,7 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
   // Estados para Redes Sociales
   const [pautaPresupuesto, setPautaPresupuesto] = useState<number>(proyectoActivo?.gastoPublicidad || 1800);
   const [canalPauta, setCanalPauta] = useState<'meta' | 'linkedin' | 'tiktok' | 'google'>('meta');
-  const [tipoCopy, setTipoCopy] = useState<'instagram_facebook' | 'linkedin' | 'tiktok_reels'>('instagram_facebook');
+  const [tipoCopy, setTipoCopy] = useState<'preferencias_configuradas' | 'instagram_facebook' | 'linkedin' | 'tiktok_reels'>('preferencias_configuradas');
 
   // Estados para Cotizador Rápido
   const [nombreClienteCotizacion, setNombreClienteCotizacion] = useState<string>('');
@@ -163,6 +180,14 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
 
   // Simulador local
   const [simuladorAlumnosExtra, setSimuladorAlumnosExtra] = useState<number>(0);
+
+  // Estados para Registro Directo de Alumnos Matriculados
+  const [nuevoAlumnoNombre, setNuevoAlumnoNombre] = useState<string>('');
+  const [nuevoAlumnoTelefono, setNuevoAlumnoTelefono] = useState<string>('');
+  const [nuevoAlumnoEmail, setNuevoAlumnoEmail] = useState<string>('');
+  const [nuevoAlumnoMonto, setNuevoAlumnoMonto] = useState<number>(0);
+  const [nuevoAlumnoMetodo, setNuevoAlumnoMetodo] = useState<string>('Transferencia Bancaria');
+  const [nuevoAlumnoSAR, setNuevoAlumnoSAR] = useState<string>('');
 
   // Actualizar estados locales cuando cambia el proyecto seleccionado
   const handleSeleccionarProyecto = (id: string) => {
@@ -379,6 +404,106 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
     }
   };
 
+  // Acción: Iniciar Curso Formalmente por Comercialización (Habilitado cuando alumnos >= 6)
+  const handleComenzarCursoYRemitirGG = () => {
+    if (!proyectoActivo) return;
+    const alumnosActuales = Math.max(Number(inscritosInput), Number(proyectoActivo.alumnosFinal || 0));
+    if (alumnosActuales < 6) {
+      if (onNotificar) {
+        onNotificar(`⚠️ Se requiere un mínimo de 6 alumnos matriculados para iniciar el curso (actualmente: ${alumnosActuales}).`);
+      }
+      return;
+    }
+
+    try {
+      const baseActualizada = calcularMetricasProyecto({
+        ...proyectoActivo,
+        alumnosFinal: alumnosActuales,
+        leadsGenerados: Math.max(0, Number(leadsInput)),
+        prospectosCalificados: Math.max(0, Number(calificadosInput)),
+        cuposReservados: Math.max(0, Number(reservasInput)),
+        gastoPublicidad: Math.max(0, Number(pautaPresupuesto)),
+        faseComercial: 'cerrada',
+      });
+
+      const proyectoIniciado = habilitarInicioCursoPorComercializacion(baseActualizada, asesorAsignado);
+      onGuardarProyecto(proyectoIniciado);
+      if (onNotificar) {
+        onNotificar(`🚀 ¡Curso "${proyectoActivo.nombreProyecto}" iniciado con éxito (${alumnosActuales} alumnos)! Remitido a Gerencia General para Aprobación Final y Rebaja del POA.`);
+      }
+    } catch (err: any) {
+      if (onNotificar) {
+        onNotificar(`⚠️ ${err?.message || 'Error al iniciar curso'}`);
+      }
+    }
+  };
+
+  // Registrar un alumno matriculado en la cohorte
+  const handleAgregarAlumnoMatriculado = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!proyectoActivo || !nuevoAlumnoNombre.trim()) return;
+
+    const precioFinal = nuevoAlumnoMonto > 0 ? nuevoAlumnoMonto : (proyectoActivo.precioSugeridoConISV || proyectoActivo.precioSugeridoAlumno || 2500);
+    const nuevoLead = {
+      id: `lead-matr-${Date.now()}`,
+      nombre: nuevoAlumnoNombre.trim(),
+      correo: nuevoAlumnoEmail.trim() || 'estudiante@summit.hn',
+      telefono: nuevoAlumnoTelefono.trim() || '+504 9000-0000',
+      empresa: 'Estudiante Particular',
+      cargo: 'Profesional Matriculado',
+      etapa: 'Inscrito Oficial' as const,
+      origenLead: 'Redes Sociales' as const,
+      montoPagado: precioFinal,
+      metodoPago: (nuevoAlumnoMetodo === 'Efectivo' ? 'Depósito Bancario' : nuevoAlumnoMetodo) as any,
+      fechaRegistro: new Date().toISOString().slice(0, 10),
+      asesorAsignado,
+      cumplePrerrequisitos: true,
+      traspasadoAAula: true,
+      notas: `Matrícula formal cohorte. Recibo/SAR: ${nuevoAlumnoSAR || 'S/N'}.`,
+    };
+
+    const nuevosAlumnos = (Number(inscritosInput) || Number(proyectoActivo.alumnosFinal) || 0) + 1;
+    setInscritosInput(nuevosAlumnos);
+
+    const crmActualizado = [nuevoLead, ...(proyectoActivo.crmProspectosCohorte || [])];
+    const nuevoIngresoReal = (proyectoActivo.ingresoRealTotal || 0) + precioFinal;
+
+    const actualizado = calcularMetricasProyecto({
+      ...proyectoActivo,
+      alumnosFinal: nuevosAlumnos,
+      ingresoRealTotal: nuevoIngresoReal,
+      crmProspectosCohorte: crmActualizado,
+    });
+
+    onGuardarProyecto(actualizado);
+    setNuevoAlumnoNombre('');
+    setNuevoAlumnoTelefono('');
+    setNuevoAlumnoEmail('');
+    setNuevoAlumnoSAR('');
+
+    if (onNotificar) {
+      onNotificar(`👨‍🎓 Alumno ${nuevoLead.nombre} matriculado con éxito (${nuevosAlumnos}/6 alumnos).`);
+    }
+  };
+
+  // Incremento / Decremento rápido de inscritos
+  const handleModificarInscritosRapido = (delta: number) => {
+    if (!proyectoActivo) return;
+    const actual = Number(inscritosInput) || Number(proyectoActivo.alumnosFinal) || 0;
+    const nuevo = Math.max(0, actual + delta);
+    setInscritosInput(nuevo);
+    const precio = proyectoActivo.precioSugeridoConISV || proyectoActivo.precioSugeridoAlumno || 2500;
+    const actualizado = calcularMetricasProyecto({
+      ...proyectoActivo,
+      alumnosFinal: nuevo,
+      ingresoRealTotal: nuevo * precio,
+    });
+    onGuardarProyecto(actualizado);
+    if (onNotificar) {
+      onNotificar(`Matrícula actualizada a ${nuevo} alumnos.`);
+    }
+  };
+
   // Textos y Copies autogenerados para redes sociales
   const copiesPublicitarios = useMemo(() => {
     if (!proyectoActivo) {
@@ -402,6 +527,13 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
     );
     const fecha = proyectoActivo.fechaProgramacion || 'Próximo Inicio';
 
+    const ctaItem = preferenciasRedes.plantillasCTA.find((c) => c.id === preferenciasRedes.ctaPredeterminadoId) || preferenciasRedes.plantillasCTA[0];
+    const ctaTexto = ctaItem ? ctaItem.texto : '¡Cupos estrictamente limitados! Escríbenos por DM o haz clic en el enlace para apartar tu lugar hoy mismo 👇';
+    const plantillaHash = preferenciasRedes.plantillasHashtags.find((p) => p.id === preferenciasRedes.plantillaHashtagsActivaId) || preferenciasRedes.plantillasHashtags[0];
+    const hashtagsTexto = plantillaHash ? plantillaHash.hashtags.join(' ') : '#SummitImpulsa #EducacionEjecutiva #Honduras #CapacitacionProfesional #Cursos2026';
+
+    const copySegunPreferencias = generarCopyPublicitarioConPreferencias(proyectoActivo, preferenciasRedes, moneda);
+
     const igFb = `🚀 ¡IMPULSA TU CARRERA PROFESIONAL EN HONDURAS! 🇭🇳✨\n\n` +
       `¿Listo para dominar las habilidades más demandadas del mercado? Inscríbete en nuestro programa de alto impacto:\n\n` +
       `📚 "${nombre}"\n` +
@@ -414,8 +546,8 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
       `✔️ Certificado avalado con respaldo institucional\n` +
       `✔️ Materiales ejecutivos, plantillas y casos reales\n` +
       `✔️ Acceso a grabaciones y networking profesional\n\n` +
-      `📲 ¡Cupos estrictamente limitados! Escríbenos por DM o haz clic en el enlace para apartar tu lugar hoy mismo 👇\n` +
-      `#SummitImpulsa #EducacionEjecutiva #Honduras #CapacitacionProfesional #Cursos2026`;
+      `📲 ${ctaTexto}\n` +
+      `${hashtagsTexto}`;
 
     const lk = `📢 Convocatoria de Formación Ejecutiva | SUMMIT IMPULSA\n\n` +
       `Nos complace anunciar la apertura de admisiones para el programa especializado:\n` +
@@ -429,13 +561,15 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
       `🔹 Deducción de gastos de capacitación conforme a normativa fiscal hondureña.\n` +
       `🔹 Aplicabilidad inmediata mediante resolución de casos de negocio.\n` +
       `🔹 Certificación de competencias ejecutivas.\n\n` +
-      `Para cotizaciones institucionales y reservas de cupos, contáctenos vía mensaje directo o a nuestro departamento de admisiones.`;
+      `Para cotizaciones institucionales y reservas de cupos, contáctenos vía mensaje directo o a nuestro departamento de admisiones.\n\n` +
+      `${hashtagsTexto}`;
 
     const tt = `🔥 ¿Trabajas en tu área y quieres ganar más y liderar proyectos? Tienes que ver esto 👇\n\n` +
       `Llega a Honduras el programa "${nombre}" con el experto ${docente}.\n` +
       `En solo ${horas} horas vas a dominar todo lo que necesitas sin rodeos.\n\n` +
       `Aprovecha el precio de preventa (${precioEB}) antes de que se agoten los cupos.\n` +
-      `Comenta "INFO" o ve al link del perfil para apartar tu cupo hoy mismo 🚀`;
+      `⚡ ${ctaTexto}\n` +
+      `${hashtagsTexto}`;
 
     const wa = `¡Hola! 👋 Te saluda el equipo de admisiones de Summit Impulsa Honduras 🇭🇳.\n\n` +
       `Es un placer saludarte. Con respecto a tu consulta sobre el programa:\n` +
@@ -463,6 +597,7 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
       `Summit Impulsa S. de R.L. | San Pedro Sula, Cortés, Honduras`;
 
     return {
+      preferencias_configuradas: copySegunPreferencias,
       instagram_facebook: igFb,
       linkedin: lk,
       tiktok_reels: tt,
@@ -470,7 +605,7 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
       emailSubject: mailSub,
       emailBody: mailBody,
     };
-  }, [proyectoActivo, moneda]);
+  }, [proyectoActivo, moneda, preferenciasRedes]);
 
   // Enlace UTM para pauta digital
   const enlaceUTM = useMemo(() => {
@@ -513,14 +648,14 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
                   Gerencia de Comercialización
                 </span>
                 <span className="text-xs font-bold text-emerald-300">
-                  Centro de Comercialización de Proyectos Académicos
+                  Lanzamiento de Campañas, Precios Preventa & Difusión de Matrícula
                 </span>
                 <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-slate-300 font-mono">
                   {proyectos.length} programas elaborados por Gerencia Académica
                 </span>
               </div>
               <h2 className="text-base sm:text-lg font-black text-white mt-0.5">
-                Comercializar Programa Educativo & Campañas de Matrícula
+                Comercializar Sílabo / Proyecto
               </h2>
             </div>
           </div>
@@ -981,6 +1116,24 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
             <div className="flex items-center gap-1 sm:gap-2 px-4 pt-3 bg-white border-b border-slate-200 overflow-x-auto no-scrollbar shrink-0">
               <button
                 type="button"
+                onClick={() => setSubTabActiva('matricula_alumnos')}
+                className={`flex items-center gap-2 px-3.5 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  subTabActiva === 'matricula_alumnos'
+                    ? 'border-indigo-600 text-indigo-700 bg-indigo-50/60 rounded-t-lg font-black'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <Users className="w-4 h-4 text-indigo-600" />
+                <span>Matrícula de Alumnos ({inscritosInput || proyectoActivo.alumnosFinal || 0}/6)</span>
+                {(Number(inscritosInput) >= 6 || Number(proyectoActivo.alumnosFinal || 0) >= 6) && (
+                  <span className="px-1.5 py-0.5 bg-emerald-500 text-white text-[10px] rounded-full font-black animate-pulse">
+                    ¡Cupo Cubierto!
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setSubTabActiva('proceso_venta')}
                 className={`flex items-center gap-2 px-3.5 py-2.5 border-b-2 text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                   subTabActiva === 'proceso_venta'
@@ -1047,6 +1200,269 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
 
             {/* Contenido Principal de las Pestañas de Comercialización */}
             <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6 bg-slate-50/50">
+
+              {/* Widget Institucional de Plazo de 25 Días Hábiles & Umbral de 6 Alumnos */}
+              <CommercialSlaWidget
+                proyecto={proyectoActivo}
+                onIniciarCurso={handleComenzarCursoYRemitirGG}
+                onAbrirMatricula={() => setSubTabActiva('matricula_alumnos')}
+              />
+
+              {/* =========================================================================
+                  PESTAÑA O: MATRÍCULA DE ALUMNOS & HABILITACIÓN DE INICIO (MÍNIMO 6 ALUMNOS)
+                  ========================================================================= */}
+              {subTabActiva === 'matricula_alumnos' && (
+                <div className="space-y-6">
+                  {/* Tarjeta de Control y Estado de Inicio */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div>
+                        <h4 className="text-base font-black text-slate-900 flex items-center gap-2">
+                          <Users className="w-5 h-5 text-indigo-600" />
+                          <span>Módulo Oficial de Matrícula de Alumnos</span>
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          Registre inscripciones de estudiantes. Al cubrir o sobrepasar el mínimo de 6 alumnos, Comercialización puede dar inicio formal al curso para dictamen y rebaja del POA.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 font-medium">Ajuste rápido:</span>
+                        <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => handleModificarInscritosRapido(-1)}
+                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs transition-colors cursor-pointer"
+                            title="Restar 1 alumno"
+                          >
+                            -1
+                          </button>
+                          <span className="px-3 py-1 bg-white font-mono font-black text-xs text-slate-900 min-w-[3rem] text-center">
+                            {inscritosInput}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleModificarInscritosRapido(1)}
+                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs transition-colors cursor-pointer"
+                            title="Sumar 1 alumno"
+                          >
+                            +1
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Alerta Condicional: Cupo Cubierto vs Faltan Alumnos */}
+                    {Number(inscritosInput) >= 6 ? (
+                      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 text-white p-4 sm:p-5 rounded-2xl shadow-md border border-emerald-400 space-y-3">
+                        <div className="flex items-start sm:items-center justify-between gap-3 flex-col sm:flex-row">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-amber-300 shrink-0">
+                              <Rocket className="w-6 h-6 animate-bounce" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="px-2.5 py-0.5 bg-amber-400 text-slate-950 font-black text-[10px] rounded-full uppercase tracking-wider">
+                                  ¡Requisito Cumplido!
+                                </span>
+                                <h5 className="font-black text-base text-white">
+                                  Cupo Mínimo Cubierto ({inscritosInput}/6 Alumnos)
+                                </h5>
+                              </div>
+                              <p className="text-xs text-emerald-100 mt-1">
+                                Comercialización está facultada para comenzar el curso y remitirlo de inmediato a Gerencia General para su aprobación definitiva y la rebaja del POA 2026.
+                              </p>
+                            </div>
+                          </div>
+
+                          {!proyectoActivo.inicioCursoHabilitadoComercial ? (
+                            <button
+                              type="button"
+                              onClick={handleComenzarCursoYRemitirGG}
+                              className="w-full sm:w-auto px-5 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all hover:scale-105 cursor-pointer shrink-0"
+                            >
+                              <Rocket className="w-4 h-4 fill-slate-950" />
+                              <span>🚀 Comenzar Curso y Remitir a GG</span>
+                              <ArrowRight className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <span className="px-4 py-2 bg-white/20 text-white font-bold text-xs rounded-xl border border-white/30 flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                              <span>Curso Iniciado — Esperando Dictamen GG</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3 text-amber-900">
+                        <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="text-xs space-y-1">
+                          <p className="font-bold">
+                            Faltan {6 - Number(inscritosInput)} alumnos matriculados para dar inicio al curso (Meta mínima: 6 alumnos).
+                          </p>
+                          <p className="text-amber-700">
+                            Utilice las herramientas de redes sociales y pauta publicitaria para captar los estudiantes requeridos dentro de la ventana de días hábiles asignados.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Formulario de Registro Rápido de Nuevo Alumno */}
+                    <form onSubmit={handleAgregarAlumnoMatriculado} className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h5 className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                          <Users className="w-4 h-4 text-indigo-600" />
+                          <span>Inscribir Nuevo Alumno a la Cohorte</span>
+                        </h5>
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          Ingreso proyectado por alumno: {formatearMoneda(proyectoActivo.precioSugeridoConISV || proyectoActivo.precioSugeridoAlumno || 2500, moneda)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="sm:col-span-1">
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Nombre del Estudiante <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ej. Ing. Mario Mendoza"
+                            value={nuevoAlumnoNombre}
+                            onChange={(e) => setNuevoAlumnoNombre(e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Teléfono / WhatsApp
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="+504 9988-7766"
+                            value={nuevoAlumnoTelefono}
+                            onChange={(e) => setNuevoAlumnoTelefono(e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Correo Electrónico
+                          </label>
+                          <input
+                            type="email"
+                            placeholder="estudiante@correo.hn"
+                            value={nuevoAlumnoEmail}
+                            onChange={(e) => setNuevoAlumnoEmail(e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Monto Pagado ({moneda})
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="50"
+                            placeholder={String(proyectoActivo.precioSugeridoConISV || 2500)}
+                            value={nuevoAlumnoMonto || ''}
+                            onChange={(e) => setNuevoAlumnoMonto(Number(e.target.value))}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Forma de Pago
+                          </label>
+                          <select
+                            value={nuevoAlumnoMetodo}
+                            onChange={(e) => setNuevoAlumnoMetodo(e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                          >
+                            <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                            <option value="Tarjeta de Crédito / Enlace">Tarjeta de Crédito / Enlace</option>
+                            <option value="Depósito Bancario">Depósito Bancario</option>
+                            <option value="Convenio Empresa">Convenio Empresa</option>
+                            <option value="Efectivo">Efectivo</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            No. Recibo / SAR
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej. REC-2026-044"
+                            value={nuevoAlumnoSAR}
+                            onChange={(e) => setNuevoAlumnoSAR(e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end pt-2">
+                        <button
+                          type="submit"
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          <span>+ Registrar Alumno Oficial</span>
+                        </button>
+                      </div>
+                    </form>
+
+                    {/* Lista de Alumnos Matriculados */}
+                    <div className="space-y-2 pt-2">
+                      <h5 className="font-bold text-xs text-slate-700 flex items-center justify-between">
+                        <span>Listado de Alumnos Registrados en la Cohorte ({proyectoActivo.crmProspectosCohorte?.length || inscritosInput} alumnos)</span>
+                        <span className="font-mono text-emerald-700 font-bold">
+                          Recaudación: {formatearMoneda(proyectoActivo.ingresoRealTotal || ((inscritosInput || 0) * (proyectoActivo.precioSugeridoConISV || 2500)), moneda)}
+                        </span>
+                      </h5>
+
+                      {proyectoActivo.crmProspectosCohorte && proyectoActivo.crmProspectosCohorte.length > 0 ? (
+                        <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 text-xs bg-white">
+                          {proyectoActivo.crmProspectosCohorte.map((alumno, idx) => (
+                            <div key={alumno.id || idx} className="p-3 flex items-center justify-between gap-2 hover:bg-slate-50">
+                              <div className="flex items-center gap-3">
+                                <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[11px]">
+                                  {idx + 1}
+                                </span>
+                                <div>
+                                  <div className="font-bold text-slate-900">{alumno.nombre}</div>
+                                  <div className="text-[11px] text-slate-500">
+                                    {alumno.telefono} • {alumno.correo}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-mono font-bold text-emerald-700">
+                                  {formatearMoneda(alumno.montoPagado || proyectoActivo.precioSugeridoConISV || 2500, moneda)}
+                                </div>
+                                <div className="text-[10px] text-slate-400">
+                                  {alumno.metodoPago || 'Confirmado'}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 border border-dashed border-slate-200 rounded-xl text-xs text-slate-500">
+                          No hay alumnos registrados individualmente en la cohorte aún. Los {inscritosInput} alumnos reflejados provienen del aforo global.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
           
           {/* =========================================================================
               PESTAÑA 1: PROCESO DE VENTA & PIPELINE DE ADMISIONES
@@ -1457,6 +1873,71 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
               ========================================================================= */}
           {subTabActiva === 'redes_sociales' && (
             <div className="space-y-6">
+
+              {/* Generador y Diseñador Visual de Flyer para Redes Sociales */}
+              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl border border-indigo-500/40 shadow-lg space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
+                      <Megaphone className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-400 text-slate-950 px-2 py-0.5 rounded shadow-xs">
+                          Módulo Gráfico Oficial
+                        </span>
+                        <h4 className="text-sm sm:text-base font-black text-white">
+                          Generador de Flyer e Imagen para Redes Sociales
+                        </h4>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-0.5 max-w-2xl">
+                        Diseña la imagen oficial de este curso seleccionando qué campos mostrar (precio, descuento preventa, docente, fechas, temario). Cópiala directamente al portapapeles (Ctrl+V) y guárdala para futuras publicaciones.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 self-start sm:self-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setMostrarModalPreferencias(true)}
+                      className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs rounded-xl border border-slate-600/80 shadow-md transition-all flex items-center gap-2 cursor-pointer hover:border-slate-500"
+                    >
+                      <Settings className="w-4 h-4 text-emerald-400" />
+                      <span>Preferencias Redes</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setMostrarModalFlyer(true)}
+                      className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer ring-1 ring-white/20"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      <span>🎨 Diseñador de Flyer</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-2.5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span>📐 Formatos: <strong>Post 1:1</strong> • <strong>Story 9:16</strong> • <strong>Banner 16:9</strong></span>
+                    <span className="hidden sm:inline">•</span>
+                    <span className="inline-flex items-center gap-1.5 bg-slate-800/80 px-2 py-0.5 rounded text-[10px] text-slate-300 border border-slate-700">
+                      <span>Tono predeterminado:</span>
+                      <strong className="text-emerald-300">{DESCRIPCIONES_TONOS[preferenciasRedes.tonoVozPredeterminado]?.nombre || 'Persuasivo'}</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 bg-slate-800/80 px-2 py-0.5 rounded text-[10px] text-slate-300 border border-slate-700">
+                      <Hash className="w-3 h-3 text-cyan-400" />
+                      <span>Hashtags:</span>
+                      <strong className="text-cyan-300">
+                        {preferenciasRedes.plantillasHashtags.find((p) => p.id === preferenciasRedes.plantillaHashtagsActivaId)?.nombre || 'General'}
+                      </strong>
+                    </span>
+                  </div>
+                  <span className="text-emerald-400 font-semibold">
+                    ✔ Copiado directo a portapapeles y descarga PNG de alta resolución
+                  </span>
+                </div>
+              </div>
               
               {/* Configuración de Pauta & Canales Digitales */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
@@ -1584,7 +2065,17 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                  <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setTipoCopy('preferencias_configuradas')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                        tipoCopy === 'preferencias_configuradas' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Según Preferencias ({DESCRIPCIONES_TONOS[preferenciasRedes.tonoVozPredeterminado]?.nombre || 'Persuasivo'})</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => setTipoCopy('instagram_facebook')}
@@ -1610,7 +2101,7 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
                         tipoCopy === 'tiktok_reels' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      TikTok / Reels Corto
+                      TikTok / Reels
                     </button>
                   </div>
                 </div>
@@ -1619,7 +2110,9 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
                 <div className="bg-slate-900 text-slate-100 p-4 rounded-xl space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                     <span className="text-[11px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
-                      {tipoCopy === 'instagram_facebook'
+                      {tipoCopy === 'preferencias_configuradas'
+                        ? `✨ Copy con Tono ${DESCRIPCIONES_TONOS[preferenciasRedes.tonoVozPredeterminado]?.nombre || 'Persuasivo'} + CTA + Plantilla de Hashtags Oficial`
+                        : tipoCopy === 'instagram_facebook'
                         ? '📱 Copy Optimizado para Meta Ads (Feed & Stories)'
                         : tipoCopy === 'linkedin'
                         ? '💼 Copy Ejecutivo B2B para LinkedIn'
@@ -1630,7 +2123,9 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
                       type="button"
                       onClick={() => {
                         const copyActual =
-                          tipoCopy === 'instagram_facebook'
+                          tipoCopy === 'preferencias_configuradas'
+                            ? copiesPublicitarios.preferencias_configuradas
+                            : tipoCopy === 'instagram_facebook'
                             ? copiesPublicitarios.instagram_facebook
                             : tipoCopy === 'linkedin'
                             ? copiesPublicitarios.linkedin
@@ -1645,7 +2140,9 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
                   </div>
 
                   <pre className="text-xs text-slate-200 font-sans whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
-                    {tipoCopy === 'instagram_facebook'
+                    {tipoCopy === 'preferencias_configuradas'
+                      ? copiesPublicitarios.preferencias_configuradas
+                      : tipoCopy === 'instagram_facebook'
                       ? copiesPublicitarios.instagram_facebook
                       : tipoCopy === 'linkedin'
                       ? copiesPublicitarios.linkedin
@@ -1939,19 +2436,54 @@ export const CommercialProjectLauncherModal: React.FC<CommercialProjectLauncherM
                 <span>Automatizar Todos los Pendientes ({resumenEjecutivo.pendientes})</span>
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={handleAutorizarYEnviarAGeneral}
-                className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs rounded-xl shadow-md transition-all hover:scale-[1.02] flex items-center gap-2 cursor-pointer"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Guardar y Autorizar Envío a Gerencia General</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {Number(inscritosInput) >= 6 && !proyectoActivo.inicioCursoHabilitadoComercial && (
+                  <button
+                    type="button"
+                    onClick={handleComenzarCursoYRemitirGG}
+                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 hover:from-emerald-700 hover:to-indigo-800 text-white font-black text-xs rounded-xl shadow-lg transition-all hover:scale-[1.02] flex items-center gap-2 cursor-pointer animate-pulse"
+                  >
+                    <Rocket className="w-4 h-4 text-emerald-200" />
+                    <span>🚀 Comenzar Curso y Remitir a GG (Rebaja POA)</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleAutorizarYEnviarAGeneral}
+                  className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Guardar Dictamen Comercial</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
 
       </div>
+
+      {/* Modal Diseñador de Flyer e Imagen para Redes Sociales */}
+      <CommercialSocialMediaFlyerModal
+        isOpen={mostrarModalFlyer}
+        onClose={() => setMostrarModalFlyer(false)}
+        proyectoInicial={proyectoActivo}
+        proyectos={proyectosOperativos}
+        moneda={moneda}
+        onGuardarProyecto={onGuardarProyecto}
+        onNotificar={onNotificar}
+      />
+
+      {/* Modal de Configuración de Preferencias de Redes Sociales */}
+      <CommercialSocialPreferencesModal
+        isOpen={mostrarModalPreferencias}
+        onClose={() => setMostrarModalPreferencias(false)}
+        onGuardar={(nuevas) => {
+          setPreferenciasRedes(nuevas);
+          if (onNotificar) {
+            onNotificar('Preferencias de redes sociales actualizadas exitosamente.');
+          }
+        }}
+      />
     </div>
   );
 };

@@ -34,9 +34,12 @@ import {
   crearNotificacionDictamenGeneral,
   crearNotificacionSilaboGrabadoRevisionGG,
   crearNotificacionAprobacionGGAComercializacion,
+  crearNotificacionRetornoGGAAcademica,
   cargarNotificacionesGuardadas,
   guardarNotificacionesStorage
 } from './utils/notificationUtils';
+import { reproducirAlertaSonoraRechazo } from './utils/audioAlertUtils';
+import { enviarAlertaRechazoSilaboEmail } from './utils/gmailUtils';
 import { useGoogleDriveAutoSync } from './utils/useGoogleDriveAutoSync';
 import { GoogleDriveSyncBar } from './components/GoogleDriveSyncBar';
 import { GoogleDriveSyncModal } from './components/GoogleDriveSyncModal';
@@ -46,8 +49,13 @@ import { GoogleMeetGerenciasModal } from './components/GoogleMeetGerenciasModal'
 import { DirectorioGerenciasModal } from './components/DirectorioGerenciasModal';
 import { POATableroControlModal } from './components/POATableroControlModal';
 import { GerenciaGeneralAuthModal } from './components/GerenciaGeneralAuthModal';
+import { SelectorPerfilGerenciaModal } from './components/auth/SelectorPerfilGerenciaModal';
+import { PerfilGerencia, RolGerencia, getUsuarioActivo, setUsuarioActivo, PERFILES_GERENCIA } from './utils/authPorGerencia';
 import { WorkflowStatusModal } from './components/WorkflowStatusModal';
+import { CommercialProjectLauncherModal } from './components/commercial/CommercialProjectLauncherModal';
 import { GlobalQuickOperationsModal } from './components/common/GlobalQuickOperationsModal';
+import { WebPushNotificationModal } from './components/WebPushNotificationModal';
+import { registrarServiceWorker, despacharAlertaCriticaWebPush } from './services/webPushService';
 import { verificarPermisoModificacion } from './utils/gerenciaGeneralSecurity';
 import { driveAuth } from './services/googleDriveService';
 import { Footer } from './components/Footer';
@@ -214,6 +222,15 @@ export default function App() {
   // Directorio y Credenciales Oficiales de Gerencias
   const [isDirectorioGerenciasModalOpen, setIsDirectorioGerenciasModalOpen] = useState(false);
 
+  // Modal Centralizado Unificado: Comercializar Sílabo / Proyecto (Todas las Gerencias)
+  const [isComercializarModalOpen, setIsComercializarModalOpen] = useState(false);
+  const [proyectoIdParaComercializar, setProyectoIdParaComercializar] = useState<string | undefined>(undefined);
+
+  const handleAbrirComercializarProyecto = (proyectoId?: string) => {
+    setProyectoIdParaComercializar(proyectoId);
+    setIsComercializarModalOpen(true);
+  };
+
   // Tablero Directivo POA SEP - DIC 2026 & Cuadro de Mando Integral
   const [isPOAModalOpen, setIsPOAModalOpen] = useState(false);
 
@@ -229,12 +246,55 @@ export default function App() {
   // Modal Centro de Operación Rápida 1 Clic (Todas las Gerencias)
   const [isGlobalQuickOperationsModalOpen, setIsGlobalQuickOperationsModalOpen] = useState(false);
 
+  // Modal Sistema de Notificaciones Web Push de Navegador (Segundo Plano)
+  const [isWebPushModalOpen, setIsWebPushModalOpen] = useState(false);
+
+  // Seguridad y Perfiles de Usuario por Gerencia (Opción A: Selector de Roles + PIN)
+  const [usuarioActivo, setUsuarioActivoState] = useState<PerfilGerencia>(() => getUsuarioActivo());
+  const [isSelectorPerfilModalOpen, setIsSelectorPerfilModalOpen] = useState(false);
+  const [rolSugeridoModal, setRolSugeridoModal] = useState<RolGerencia | undefined>(undefined);
+
+  useEffect(() => {
+    const handleAuthChange = (e: any) => {
+      if (e.detail?.rol && PERFILES_GERENCIA[e.detail.rol as RolGerencia]) {
+        setUsuarioActivoState(PERFILES_GERENCIA[e.detail.rol as RolGerencia]);
+      }
+    };
+    window.addEventListener('summit-auth-usuario-cambio', handleAuthChange);
+    return () => window.removeEventListener('summit-auth-usuario-cambio', handleAuthChange);
+  }, []);
+
+  const handleCambiarPerfilUsuario = (nuevoPerfil: PerfilGerencia) => {
+    setUsuarioActivoState(nuevoPerfil);
+    if (nuevoPerfil.id === 'gerencia-academica') {
+      setVistaActual('gerencia-academica');
+    } else if (nuevoPerfil.id === 'gerencia-comercializacion') {
+      setVistaActual('gerencia-comercializacion');
+    } else if (nuevoPerfil.id === 'gerencia-general') {
+      setVistaActual('gerencia-general');
+    } else if (nuevoPerfil.id === 'auditor-interno') {
+      setVistaActual('gerencia-general');
+      setSubPestanaGeneral('auditor_interno');
+    }
+    mostrarToast(`Sesión activa: ${nuevoPerfil.nombre} (${nuevoPerfil.titular})`);
+    
+    if (pendingActionCallback && nuevoPerfil.id === 'gerencia-general') {
+      const cb = pendingActionCallback;
+      setPendingActionCallback(null);
+      setTimeout(() => cb(), 150);
+    }
+  };
+
   // Parámetro de Seguridad Estricta: Solo la Gerencia General puede realizar cambios de cualquier índole
   const [isGGAuthModalOpen, setIsGGAuthModalOpen] = useState(false);
   const [ggAuthAccionDesc, setGgAuthAccionDesc] = useState('realizar modificaciones en el sistema');
   const [pendingActionCallback, setPendingActionCallback] = useState<(() => void) | null>(null);
 
   const ejecutarConSeguridadGG = (accion: () => void, accionDesc: string = 'realizar cambios en el sistema') => {
+    if (usuarioActivo.id === 'gerencia-general') {
+      accion();
+      return;
+    }
     const usuarioEmail = driveAuth.currentUser?.email;
     const chequeo = verificarPermisoModificacion(usuarioEmail);
     if (chequeo.permitido) {
@@ -242,7 +302,8 @@ export default function App() {
     } else {
       setGgAuthAccionDesc(accionDesc);
       setPendingActionCallback(() => accion);
-      setIsGGAuthModalOpen(true);
+      setRolSugeridoModal('gerencia-general');
+      setIsSelectorPerfilModalOpen(true);
     }
   };
 
@@ -288,6 +349,29 @@ export default function App() {
       }
     }
   };
+
+  // Inicializar Service Worker de Web Push y escuchar navegación por clics en alertas
+  useEffect(() => {
+    registrarServiceWorker();
+
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'WEB_PUSH_NAVIGATE') {
+        const { vista, proyectoId } = event.data;
+        if (vista) {
+          handleEjecutarAccionNotificacion(vista, proyectoId);
+        }
+      }
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    }
+    return () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+      }
+    };
+  }, [proyectos]);
 
   // Lista de meses disponibles y filtro activo
   const listaMesesDisponibles = useMemo(() => {
@@ -372,12 +456,6 @@ export default function App() {
     mostrarToast(`${ids.length} proyectos eliminados de la matriz`);
   };
 
-  const handleVerProyectosAcademicos = () => {
-    setVistaActual('gerencia-academica');
-    setSubPestanaAcademica('proyectos_creados');
-    mostrarToast('Visualizando proyectos creados por la Gerencia Académica');
-  };
-
   const ejecutarGuardadoInterno = (proyectoGuardado: ProyectoEducativo, origenVista?: string) => {
     const ahora = new Date();
     const horaActualFormateada = ahora.toLocaleTimeString('es-HN', {
@@ -419,6 +497,11 @@ export default function App() {
         const actualizados = [...prev];
         actualizados[index] = proyectoConHistorial;
 
+        // 0. Detectar si Gerencia General rechazó el sílabo y lo retorna a Gerencia Académica
+        const esRechazadoPorGG = 
+          (proyectoConHistorial.etapaFlujo === 'rechazado_gerencia_general' && proyectoAnterior.etapaFlujo !== 'rechazado_gerencia_general') ||
+          (proyectoConHistorial.rechazadoPorGerenciaGeneral && !proyectoAnterior.rechazadoPorGerenciaGeneral);
+
         // 1. Detectar si Gerencia General aprobó el sílabo y lo traslada a Comercialización
         const pasaAComercializacionDesdeGG = 
           (proyectoConHistorial.aprobadoGerenciaGeneral && !proyectoAnterior.aprobadoGerenciaGeneral) ||
@@ -435,7 +518,47 @@ export default function App() {
           origenVista === 'gerencia-comercializacion' ||
           vistaActual === 'gerencia-comercializacion';
 
-        if (pasaAComercializacionDesdeGG) {
+        if (esRechazadoPorGG) {
+          const motivo = proyectoConHistorial.motivoRechazoGerenciaGeneral || 'La Gerencia General determinó ajustes obligatorios en costos o estructura.';
+          const { notificacion: notifRechazo, aviso } = crearNotificacionRetornoGGAAcademica(
+            proyectoConHistorial,
+            motivo
+          );
+          const avisosPrevios = proyectoConHistorial.avisosProyecto || [];
+          proyectoConHistorial.avisosProyecto = [aviso, ...avisosPrevios];
+
+          setNotificaciones((prevNotifs) => [notifRechazo, ...prevNotifs]);
+          setNotificacionActivaBanner(notifRechazo);
+
+          // Emitir alerta acústica ejecutiva
+          reproducirAlertaSonoraRechazo();
+
+          // Despacho de Notificación Nativa Web Push a Navegador / Sistema Operativo (Segundo Plano)
+          despacharAlertaCriticaWebPush({
+            tipo: 'rechazo_gg',
+            titulo: `🚨 RETORNO URGENTE A GERENCIA ACADÉMICA (${proyectoConHistorial.codigoProyecto || 'SIG-ACAD'})`,
+            cuerpo: `Gerencia General retornó "${proyectoConHistorial.nombreProyecto}" para corrección financiera obligatoria: ${motivo}`,
+            gerenciaDestino: 'gerencia-academica',
+            gerenciaOrigen: 'gerencia-general',
+            proyectoId: proyectoConHistorial.id,
+            codigoEmpresa: proyectoConHistorial.codigoProyecto,
+            correlativoSAR: proyectoConHistorial.correlativoSAR,
+            nombreProyecto: proyectoConHistorial.nombreProyecto,
+            vistaDestino: 'gerencia-academica',
+            accionEtiqueta: 'Corregir Sílabo en Académica ↗',
+          });
+
+          // Despacho proactivo de correo electrónico (Gmail API con fallback mailto)
+          enviarAlertaRechazoSilaboEmail(proyectoConHistorial, motivo, moneda)
+            .then((res) => {
+              if (res.success && !res.simulado) {
+                mostrarToast(`📧 Alerta de correo enviada a Gerencia Académica (${res.destinatarios.join(', ')})`);
+              }
+            })
+            .catch((err) => console.error('Error al despachar alerta email:', err));
+
+          mostrarToast(`🚨 Sílabo rechazado y devuelto a Gerencia Académica. Alerta proactiva y correo notificados.`);
+        } else if (pasaAComercializacionDesdeGG) {
           const { notificacion: notifCom, aviso } = crearNotificacionAprobacionGGAComercializacion(
             proyectoConHistorial,
             proyectoConHistorial.observacionesGerenciaGeneral
@@ -444,6 +567,22 @@ export default function App() {
           proyectoConHistorial.avisosProyecto = [aviso, ...avisosPrevios];
           setNotificaciones((prevNotifs) => [notifCom, ...prevNotifs]);
           setNotificacionActivaBanner(notifCom);
+
+          // Despacho de Notificación Nativa Web Push a Gerencia de Comercialización
+          despacharAlertaCriticaWebPush({
+            tipo: 'aprobacion_gg',
+            titulo: `🟢 PROYECTO APROBADO ➔ COMERCIALIZACIÓN (${proyectoConHistorial.codigoProyecto || 'SIG-ACAD'})`,
+            cuerpo: `Gerencia General auditó y aprobó "${proyectoConHistorial.nombreProyecto}". Habilitado para inicio de pauta publicitaria y captación de alumnos.`,
+            gerenciaDestino: 'gerencia-comercializacion',
+            gerenciaOrigen: 'gerencia-general',
+            proyectoId: proyectoConHistorial.id,
+            codigoEmpresa: proyectoConHistorial.codigoProyecto,
+            correlativoSAR: proyectoConHistorial.correlativoSAR,
+            nombreProyecto: proyectoConHistorial.nombreProyecto,
+            vistaDestino: 'gerencia-comercializacion',
+            accionEtiqueta: 'Abrir en Comercialización ↗',
+          });
+
           mostrarToast(`¡Sílabo aprobado por Gerencia General! Remitido a Gerencia de Comercialización para inicio de captación.`);
         } else if (esGrabacionAcademica) {
           const { notificacion: notifGG, aviso } = crearNotificacionSilaboGrabadoRevisionGG(proyectoConHistorial);
@@ -451,6 +590,22 @@ export default function App() {
           proyectoConHistorial.avisosProyecto = [aviso, ...avisosPrevios];
           setNotificaciones((prevNotifs) => [notifGG, ...prevNotifs]);
           setNotificacionActivaBanner(notifGG);
+
+          // Despacho Web Push a Gerencia General
+          despacharAlertaCriticaWebPush({
+            tipo: 'nuevo_silabo',
+            titulo: `📘 NUEVO SÍLABO PARA DICTAMEN GG (${proyectoConHistorial.codigoProyecto || 'SIG-ACAD'})`,
+            cuerpo: `Gerencia Académica concluyó el Sílabo Oficial de "${proyectoConHistorial.nombreProyecto}". Remitido a Gerencia General para su revisión y dictamen.`,
+            gerenciaDestino: 'gerencia-general',
+            gerenciaOrigen: 'gerencia-academica',
+            proyectoId: proyectoConHistorial.id,
+            codigoEmpresa: proyectoConHistorial.codigoProyecto,
+            correlativoSAR: proyectoConHistorial.correlativoSAR,
+            nombreProyecto: proyectoConHistorial.nombreProyecto,
+            vistaDestino: 'gerencia-general',
+            accionEtiqueta: 'Revisar en Gerencia General ↗',
+          });
+
           mostrarToast(`Sílabo oficial grabado (${proyectoConHistorial.codigoProyecto} / SAR: ${proyectoConHistorial.correlativoSAR}). Remitido a Gerencia General.`);
         } else if (esTrabajoComercial) {
           const notifGen = crearNotificacionProyectoComercializado(proyectoConHistorial);
@@ -461,7 +616,40 @@ export default function App() {
           const notifDictamen = crearNotificacionDictamenGeneral(proyectoConHistorial, true);
           setNotificaciones((prevNotifs) => [notifDictamen, ...prevNotifs]);
           setNotificacionActivaBanner(notifDictamen);
+
+          despacharAlertaCriticaWebPush({
+            tipo: 'cambio_estado',
+            titulo: `✅ DICTAMEN FAVORABLE: PROYECTO LISTO (${proyectoConHistorial.codigoProyecto || 'SIG-ACAD'})`,
+            cuerpo: `"${proyectoConHistorial.nombreProyecto}" ha recibido Dictamen 'Listo'. Rebaja POA aplicada y viabilidad completada.`,
+            gerenciaDestino: 'todas',
+            gerenciaOrigen: 'gerencia-general',
+            proyectoId: proyectoConHistorial.id,
+            codigoEmpresa: proyectoConHistorial.codigoProyecto,
+            correlativoSAR: proyectoConHistorial.correlativoSAR,
+            nombreProyecto: proyectoConHistorial.nombreProyecto,
+            estadoNuevo: 'Listo',
+            vistaDestino: 'gerencia-general',
+          });
+
           mostrarToast(`Dictamen 'Listo' registrado a las ${horaActualFormateada}. Rebaja POA aplicada.`);
+        } else if (
+          (proyectoConHistorial.seLlevoACabo === 'Cancelado' || proyectoConHistorial.seLlevoACabo === 'Denegado') &&
+          proyectoAnterior.seLlevoACabo !== proyectoConHistorial.seLlevoACabo
+        ) {
+          despacharAlertaCriticaWebPush({
+            tipo: 'cambio_estado',
+            titulo: `⚠️ ESTADO CRÍTICO: PROYECTO ${proyectoConHistorial.seLlevoACabo.toUpperCase()} (${proyectoConHistorial.codigoProyecto || 'SIG-ACAD'})`,
+            cuerpo: `"${proyectoConHistorial.nombreProyecto}" ha sido marcado como ${proyectoConHistorial.seLlevoACabo}.`,
+            gerenciaDestino: 'todas',
+            gerenciaOrigen: 'gerencia-general',
+            proyectoId: proyectoConHistorial.id,
+            codigoEmpresa: proyectoConHistorial.codigoProyecto,
+            correlativoSAR: proyectoConHistorial.correlativoSAR,
+            nombreProyecto: proyectoConHistorial.nombreProyecto,
+            estadoNuevo: proyectoConHistorial.seLlevoACabo,
+            vistaDestino: 'gerencia-general',
+          });
+          mostrarToast(`Proyecto marcado como ${proyectoConHistorial.seLlevoACabo}.`);
         } else {
           mostrarToast(`Proyecto actualizado a las ${horaActualFormateada}`);
         }
@@ -491,6 +679,21 @@ export default function App() {
 
         setNotificaciones((prevNotifs) => [notifGG, ...prevNotifs]);
         setNotificacionActivaBanner(notifGG);
+
+        // Despacho Web Push a Gerencia General por nuevo proyecto
+        despacharAlertaCriticaWebPush({
+          tipo: 'nuevo_silabo',
+          titulo: `📘 NUEVO SÍLABO OFICIAL GRABADO (${proyectoConCorrelativos.codigoProyecto || 'SIG-ACAD'})`,
+          cuerpo: `Nuevo Sílabo Oficial "${proyectoConCorrelativos.nombreProyecto}" registrado. Remitido a Gerencia General para su revisión y dictamen.`,
+          gerenciaDestino: 'gerencia-general',
+          gerenciaOrigen: 'gerencia-academica',
+          proyectoId: proyectoConHistorial.id,
+          codigoEmpresa: proyectoConCorrelativos.codigoProyecto,
+          correlativoSAR: proyectoConCorrelativos.correlativoSAR,
+          nombreProyecto: proyectoConCorrelativos.nombreProyecto,
+          vistaDestino: 'gerencia-general',
+          accionEtiqueta: 'Revisar en Gerencia General ↗',
+        });
 
         mostrarToast(`Sílabo Oficial "${proyectoConCorrelativos.nombreProyecto}" grabado (Empresa: ${proyectoConCorrelativos.codigoProyecto || 'SIG-ACAD'} | SAR: ${proyectoConCorrelativos.correlativoSAR}). Remitido a Gerencia General.`);
         return [proyectoConHistorial, ...prev];
@@ -690,6 +893,7 @@ export default function App() {
         listaMesesDisponibles={listaMesesDisponibles}
         notificaciones={notificaciones}
         onAbrirNotificaciones={() => setIsNotificationsModalOpen(true)}
+        onAbrirWebPushModal={() => setIsWebPushModalOpen(true)}
         onAbrirGoogleDriveModal={() => setIsDriveModalOpen(true)}
         onAbrirGoogleSheetsModal={() => setIsGoogleSheetsModalOpen(true)}
         onAbrirGoogleFormsModal={() => setIsGoogleFormsModalOpen(true)}
@@ -702,7 +906,11 @@ export default function App() {
         onExportarReporteMesPDF={handleAbrirExportarMes}
         onAbrirWorkflowStatusModal={() => handleAbrirWorkflowModal()}
         onAbrirOperacionRapida={() => setIsGlobalQuickOperationsModalOpen(true)}
-        onVerProyectosAcademicos={handleVerProyectosAcademicos}
+        usuarioActivo={usuarioActivo}
+        onAbrirSelectorPerfil={() => {
+          setRolSugeridoModal(usuarioActivo.id);
+          setIsSelectorPerfilModalOpen(true);
+        }}
       />
 
       {/* Barra Permanente de Auto-Guardado en Google Drive */}
@@ -814,6 +1022,7 @@ export default function App() {
             onExportarReporteMesPDF={handleAbrirExportarMes}
             onAbrirTableroPOA={() => setIsPOAModalOpen(true)}
             onAbrirWorkflowStatusModal={handleAbrirWorkflowModal}
+            onAbrirComercializarProyecto={handleAbrirComercializarProyecto}
             onNotificar={mostrarToast}
           />
         )}
@@ -829,6 +1038,7 @@ export default function App() {
             onEliminarProyecto={handleSolicitarEliminar}
             onEliminarMultiples={handleEliminarMultiples}
             onAbrirWorkflowStatusModal={handleAbrirWorkflowModal}
+            onAbrirComercializarProyecto={handleAbrirComercializarProyecto}
             onNotificar={mostrarToast}
             subPestanaInicial={subPestanaAcademica}
             onCambiarSubPestana={setSubPestanaAcademica}
@@ -844,6 +1054,7 @@ export default function App() {
             onGuardarProyecto={handleGuardarProyecto}
             onNotificar={(msg) => mostrarToast(msg)}
             onAbrirWorkflowStatusModal={handleAbrirWorkflowModal}
+            onAbrirComercializarProyecto={handleAbrirComercializarProyecto}
           />
         )}
 
@@ -874,6 +1085,7 @@ export default function App() {
         proyectosExistentes={proyectos}
         moneda={moneda}
         vistaActual={vistaActual}
+        usuarioActivo={usuarioActivo}
       />
 
       {/* Modal para Ver Detalle y Sensibilidad */}
@@ -925,6 +1137,14 @@ export default function App() {
         onMarcarLeida={handleMarcarNotificacionLeida}
         onMarcarTodasLeidas={handleMarcarTodasLeidas}
         onLimpiarNotificaciones={handleLimpiarNotificaciones}
+        onEjecutarAccion={handleEjecutarAccionNotificacion}
+        onAbrirConfigWebPush={() => setIsWebPushModalOpen(true)}
+      />
+
+      {/* Modal Sistema de Notificaciones Web Push de Navegador (Segundo Plano) */}
+      <WebPushNotificationModal
+        isOpen={isWebPushModalOpen}
+        onClose={() => setIsWebPushModalOpen(false)}
         onEjecutarAccion={handleEjecutarAccionNotificacion}
       />
 
@@ -1083,6 +1303,37 @@ export default function App() {
           mostrarToast('Autorización de Gerencia General verificada con éxito.');
         }}
         accionDescripcion={ggAuthAccionDesc}
+      />
+
+      {/* Modal Centralizado Unificado: Comercializar Sílabo / Proyecto (Todas las Gerencias) */}
+      {isComercializarModalOpen && (
+        <CommercialProjectLauncherModal
+          proyectos={proyectos}
+          moneda={moneda}
+          proyectoInicialId={proyectoIdParaComercializar}
+          onCerrar={() => {
+            setIsComercializarModalOpen(false);
+            setProyectoIdParaComercializar(undefined);
+          }}
+          onGuardarProyecto={handleGuardarProyecto}
+          onEditarProyecto={handleEditarProyecto}
+          onVerDetalle={handleVerDetalle}
+          onNotificar={mostrarToast}
+          onAbrirWorkflowStatusModal={handleAbrirWorkflowModal}
+        />
+      )}
+
+      {/* Modal de Selección y Autenticación por Gerencia (Opción A) */}
+      <SelectorPerfilGerenciaModal
+        isOpen={isSelectorPerfilModalOpen}
+        onClose={() => {
+          setIsSelectorPerfilModalOpen(false);
+          setRolSugeridoModal(undefined);
+          setPendingActionCallback(null);
+        }}
+        usuarioActivo={usuarioActivo}
+        onUsuarioCambiado={handleCambiarPerfilUsuario}
+        rolSugerido={rolSugeridoModal}
       />
 
     </div>
